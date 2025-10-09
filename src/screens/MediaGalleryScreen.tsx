@@ -20,7 +20,7 @@ import { saveMediaMetadata, loadMediaMetadata } from '../utils/mediaStorage';
 import { deleteMedia as deleteMediaFromBackend, uploadMedia } from '../utils/api';
 
 const { width } = Dimensions.get('window');
-const ITEM_SIZE = (width - 32) / 3; // 3 columns with minimal spacing
+const COLUMN_WIDTH = (width - 24) / 2; // 2 columns with spacing
 
 interface EmojiOverlay {
   id: string;
@@ -42,12 +42,12 @@ interface MediaItem {
   segments?: string[];
 }
 
-interface VideoGalleryScreenProps {
+interface MediaGalleryScreenProps {
   onBack?: () => void;
   onRecordMoreSegments?: (existingVideoUri: string, existingSegments?: string[]) => void;
 }
 
-export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({ 
+export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({ 
   onBack,
   onRecordMoreSegments,
 }) => {
@@ -557,45 +557,71 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
       setCurrentSegmentIndex(0);
     };
 
+    // Create varying heights for masonry effect
+    const heights = [220, 280, 250, 300, 240, 270];
+    const itemHeight = heights[index % heights.length];
+
+    // Get user name from caption or use default
+    const userName = item.caption?.split('\n')[0] || '';
+
     return (
-      <View style={styles.videoItem}>
+      <View style={[styles.videoItem, { height: itemHeight }]}>
         <TouchableOpacity
           style={styles.videoTouchable}
           onPress={handlePress}
-          activeOpacity={0.8}
+          activeOpacity={0.9}
         >
           {item.type === 'photo' ? (
             <Image source={{ uri: item.uri }} style={styles.thumbnailImage} />
           ) : (
             <View style={styles.thumbnail}>
-              <MaterialIcons name="play-circle-filled" size={40} color="rgba(255,255,255,0.8)" />
+              <Image source={{ uri: item.uri }} style={styles.thumbnailImage} />
+              <View style={styles.playIconOverlay}>
+                <MaterialIcons name="play-circle-filled" size={50} color="rgba(255,255,255,0.9)" />
+              </View>
             </View>
           )}
-        </TouchableOpacity>
-        
-        {/* Media type indicator */}
-        <View style={styles.mediaTypeIndicator}>
-          <MaterialIcons 
-            name={item.type === 'video' ? 'videocam' : 'camera-alt'} 
-            size={14} 
-            color="#fff" 
-          />
-        </View>
-        
-        {/* Public badge */}
-        {item.published && (
-          <View style={styles.publicBadge}>
-            <MaterialIcons name="public" size={12} color="#fff" />
+          
+          {/* Gradient overlay for better text visibility */}
+          <View style={styles.gradientOverlay} />
+          
+          {/* User info overlay */}
+          {userName && (
+            <View style={styles.userInfoOverlay}>
+              <View style={styles.userInfo}>
+                <Text style={styles.userName} numberOfLines={1}>{userName}</Text>
+              </View>
+              {item.published && (
+                <View style={styles.verifiedBadge}>
+                  <MaterialIcons name="verified" size={14} color="#fff" />
+                </View>
+              )}
+            </View>
+          )}
+          
+          {/* Public/Private badge for gallery */}
+          <View style={styles.galleryStatusBadge}>
+            {item.published ? (
+              <>
+                <MaterialIcons name="public" size={14} color="#fff" />
+                <Text style={styles.galleryStatusText}>Public</Text>
+              </>
+            ) : (
+              <>
+                <MaterialIcons name="lock" size={14} color="#fff" />
+                <Text style={styles.galleryStatusText}>Private</Text>
+              </>
+            )}
           </View>
-        )}
-        
-        {/* Delete button overlay */}
-        <TouchableOpacity
-          style={styles.deleteIconButton}
-          onPress={handleDelete}
-          activeOpacity={0.6}
-        >
-          <MaterialIcons name="delete-outline" size={18} color="#fff" />
+          
+          {/* Heart icon */}
+          <TouchableOpacity
+            style={styles.heartButton}
+            onPress={handleDelete}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="favorite-border" size={24} color="#fff" />
+          </TouchableOpacity>
         </TouchableOpacity>
       </View>
     );
@@ -682,41 +708,29 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
           ))}
         </View>
         
+        {/* Back button - top left */}
+        <TouchableOpacity
+          style={styles.mediaBackButton}
+          onPress={handleBack}
+        >
+          <MaterialIcons name="arrow-back" size={28} color="#fff" />
+        </TouchableOpacity>
+
+        {/* Edit button - top right */}
+        <TouchableOpacity
+          style={styles.mediaEditButton}
+          onPress={() => handleEditMedia(selectedMedia)}
+        >
+          <MaterialIcons name="edit" size={24} color="#fff" />
+        </TouchableOpacity>
+
         <View style={styles.videoInfo}>
           {selectedMedia.caption && (
             <Text style={styles.captionText}>{selectedMedia.caption}</Text>
           )}
-          <Text style={styles.videoTitle}>{selectedMedia.filename}</Text>
           <Text style={styles.videoDate}>
             {formatDate(selectedMedia.timestamp)}
-            {selectedMedia.published && ' • Public'}
           </Text>
-        </View>
-
-        <View style={styles.fullVideoControls}>
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPress={handleBack}
-          >
-            <MaterialIcons name="arrow-back" size={24} color="#fff" />
-            <Text style={styles.controlButtonText}>Back</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPress={() => handleEditMedia(selectedMedia)}
-          >
-            <MaterialIcons name="edit" size={24} color="#fff" />
-            <Text style={styles.controlButtonText}>Edit</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.controlButton, styles.deleteButton]}
-            onPress={() => deleteMedia(selectedMedia)}
-          >
-            <MaterialIcons name="delete" size={24} color="#fff" />
-            <Text style={styles.controlButtonText}>Delete</Text>
-          </TouchableOpacity>
         </View>
       </View>
     );
@@ -724,10 +738,10 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
 
   return (
     <View style={styles.container}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <MaterialIcons name="arrow-back" size={28} color="#333" />
+          <MaterialIcons name="arrow-back" size={28} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>My Gallery</Text>
         <View style={styles.headerSpacer} />
@@ -749,7 +763,7 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
           data={mediaItems}
           renderItem={renderMediaItem}
           keyExtractor={(item, index) => `${item.filename}-${item.timestamp}-${index}`}
-          numColumns={3}
+          numColumns={2}
           contentContainerStyle={styles.gridContainer}
           columnWrapperStyle={styles.columnWrapper}
           extraData={mediaItems.length}
@@ -763,7 +777,7 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#0a0a0a',
   },
   header: {
     flexDirection: 'row',
@@ -772,13 +786,13 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 16,
     paddingHorizontal: 16,
-    backgroundColor: '#fff',
+    backgroundColor: '#0a0a0a',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#222',
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.3,
     shadowRadius: 3,
   },
   backButton: {
@@ -790,29 +804,29 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#fff',
   },
   headerSpacer: {
     width: 40,
   },
   gridContainer: {
     padding: 8,
+    paddingBottom: 20,
   },
   columnWrapper: {
     justifyContent: 'space-between',
     marginBottom: 8,
   },
   videoItem: {
-    width: ITEM_SIZE,
-    height: ITEM_SIZE,
-    borderRadius: 12,
+    width: COLUMN_WIDTH,
+    borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#000',
-    elevation: 2,
+    elevation: 3,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
     position: 'relative',
   },
   videoTouchable: {
@@ -821,13 +835,101 @@ const styles = StyleSheet.create({
   },
   thumbnail: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: '100%',
+    height: '100%',
+    position: 'relative',
   },
   thumbnailImage: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
+  },
+  playIconOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.1)',
+  },
+  gradientOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '60%',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  userInfoOverlay: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  userInfo: {
+    flex: 1,
+    marginRight: 8,
+  },
+  userName: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 2,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  userSubtitle: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '400',
+    opacity: 0.9,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  verifiedBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(79, 70, 229, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heartButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  galleryStatusBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 4,
+  },
+  galleryStatusText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
   },
   mediaTypeIndicator: {
     position: 'absolute',
@@ -891,7 +993,7 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#666',
+    color: '#ccc',
     marginTop: 16,
     marginBottom: 8,
   },
@@ -908,28 +1010,72 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   videoInfo: {
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
     padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    position: 'absolute',
+    bottom: 100,
+    left: 0,
+    right: 0,
   },
   videoTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: '#fff',
     marginBottom: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   videoDate: {
     fontSize: 14,
-    color: '#666',
+    color: '#fff',
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  mediaBackButton: {
+    position: 'absolute',
+    top: 60,
+    left: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  mediaEditButton: {
+    position: 'absolute',
+    top: 60,
+    right: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   fullVideoControls: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     padding: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    backgroundColor: 'transparent',
+    position: 'absolute',
+    bottom: 20,
+    left: 0,
+    right: 0,
     gap: 8,
   },
   controlButton: {
