@@ -68,3 +68,4 @@ src/utils/apiConfig.ts
 
 .cursor/rules/*
 docs/*
+ideas/*
