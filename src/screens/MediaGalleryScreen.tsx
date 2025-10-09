@@ -979,7 +979,7 @@ const styles = StyleSheet.create({
   },
   socialActionsStack: {
     position: 'absolute',
-    bottom: 12,
+    top: 12, // Moved to top-right to avoid overlap with user info at bottom
     right: 12,
     flexDirection: 'column',
     gap: 12,
