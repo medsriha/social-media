@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -41,7 +41,7 @@ interface MediaItem {
 
 interface VideoGalleryScreenProps {
   onBack?: () => void;
-  onRecordMoreSegments?: (existingVideoUri: string) => void;
+  onRecordMoreSegments?: (existingVideoUri: string, existingSegments?: string[]) => void;
 }
 
 export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({ 
@@ -53,7 +53,9 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [showEditor, setShowEditor] = useState(false);
   const [editingMedia, setEditingMedia] = useState<MediaItem | null>(null);
+  const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [mediaPermission, requestMediaPermission] = MediaLibrary.usePermissions();
+  const videoRef = useRef<Video>(null);
 
   useEffect(() => {
     loadMedia();
@@ -244,8 +246,22 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
   const handleBack = () => {
     if (selectedMedia) {
       setSelectedMedia(null);
+      setCurrentSegmentIndex(0);
     } else if (onBack) {
       onBack();
+    }
+  };
+
+  const handleVideoPlaybackEnd = () => {
+    if (selectedMedia?.segments && selectedMedia.segments.length > 1) {
+      const segments = selectedMedia.segments;
+      if (currentSegmentIndex < segments.length - 1) {
+        // Play next segment
+        setCurrentSegmentIndex(currentSegmentIndex + 1);
+      } else {
+        // Loop back to first segment
+        setCurrentSegmentIndex(0);
+      }
     }
   };
 
@@ -396,9 +412,9 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
 
   const handleAddSegments = () => {
     if (editingMedia && editingMedia.type === 'video' && onRecordMoreSegments) {
-      // Close editor and trigger camera with existing video
+      // Close editor and trigger camera with existing video and its segments
       setShowEditor(false);
-      onRecordMoreSegments(editingMedia.uri);
+      onRecordMoreSegments(editingMedia.uri, editingMedia.segments);
     }
   };
 
@@ -414,6 +430,7 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
 
     const handlePress = () => {
       setSelectedMedia(item);
+      setCurrentSegmentIndex(0);
     };
 
     return (
@@ -480,18 +497,41 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
   }
 
   if (selectedMedia) {
+    // Determine current video URI based on segments
+    const segments = selectedMedia.segments || [selectedMedia.uri];
+    const hasMultipleSegments = segments.length > 1;
+    const currentVideoUri = segments[currentSegmentIndex];
+
     return (
       <View style={styles.container}>
         <StatusBar style="light" />
         <View style={styles.videoPlayerContainer}>
           {selectedMedia.type === 'video' ? (
-            <Video
-              source={{ uri: selectedMedia.uri }}
-              style={styles.fullVideo}
-              useNativeControls
-              resizeMode={ResizeMode.CONTAIN}
-              shouldPlay
-            />
+            <>
+              <Video
+                ref={videoRef}
+                key={currentVideoUri}
+                source={{ uri: currentVideoUri }}
+                style={styles.fullVideo}
+                useNativeControls
+                resizeMode={ResizeMode.CONTAIN}
+                shouldPlay
+                isLooping={!hasMultipleSegments}
+                onPlaybackStatusUpdate={(status) => {
+                  if (status.isLoaded && status.didJustFinish && hasMultipleSegments) {
+                    handleVideoPlaybackEnd();
+                  }
+                }}
+              />
+              {hasMultipleSegments && (
+                <View style={styles.segmentIndicator}>
+                  <MaterialIcons name="video-library" size={16} color="#fff" />
+                  <Text style={styles.segmentText}>
+                    Segment {currentSegmentIndex + 1} of {segments.length}
+                  </Text>
+                </View>
+              )}
+            </>
           ) : (
             <Image
               source={{ uri: selectedMedia.uri }}
@@ -791,6 +831,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginLeft: 6,
+  },
+  segmentIndicator: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    gap: 6,
+    zIndex: 10,
+  },
+  segmentText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
 
