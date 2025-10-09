@@ -9,12 +9,13 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
+  Alert,
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
-import * as FileSystem from 'expo-file-system/legacy';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getAllMedia, API_BASE_URL, MediaPost } from '../utils/api';
 
 const { height, width } = Dimensions.get('window');
 
@@ -27,6 +28,7 @@ interface EmojiOverlay {
 }
 
 interface MediaItem {
+  id?: number;
   uri: string;
   filename: string;
   timestamp: number;
@@ -53,38 +55,39 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
 
   const loadPublicMedia = useCallback(async () => {
     try {
-      const publicDirectory = `${FileSystem.documentDirectory}public/`;
-      const dirInfo = await FileSystem.getInfoAsync(publicDirectory);
-
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(publicDirectory, { intermediates: true });
-        setMediaItems([]);
-        return;
-      }
-
-      const files = await FileSystem.readDirectoryAsync(publicDirectory);
-      const metadataFiles = files.filter((file) => file.endsWith('.json'));
-
-      const mediaPromises = metadataFiles.map(async (filename) => {
+      // Fetch media from backend API
+      const mediaPosts = await getAllMedia();
+      
+      // Transform backend data to MediaItem format
+      const transformedMedia: MediaItem[] = mediaPosts.map((post: MediaPost) => {
+        let emojis: EmojiOverlay[] = [];
         try {
-          const metadataUri = `${publicDirectory}${filename}`;
-          const metadataContent = await FileSystem.readAsStringAsync(metadataUri);
-          const metadata: MediaItem = JSON.parse(metadataContent);
-          return metadata;
-        } catch (error) {
-          console.error('Error reading metadata:', error);
-          return null;
+          emojis = post.emojis ? JSON.parse(post.emojis) : [];
+        } catch (e) {
+          console.error('Error parsing emojis:', e);
         }
+
+        return {
+          id: post.id,
+          uri: `${API_BASE_URL}${post.url}`,
+          filename: post.filename,
+          timestamp: post.timestamp,
+          type: post.media_type,
+          caption: post.caption || '',
+          emojis,
+          published: post.published,
+        };
       });
 
-      const mediaResults = await Promise.all(mediaPromises);
-      const validMedia = mediaResults.filter((item): item is MediaItem => item !== null);
-
-      // Sort by timestamp (newest first)
-      validMedia.sort((a, b) => b.timestamp - a.timestamp);
-      setMediaItems(validMedia);
+      setMediaItems(transformedMedia);
     } catch (error) {
-      console.error('Error loading public media:', error);
+      console.error('Error loading public media from backend:', error);
+      Alert.alert(
+        'Connection Error',
+        'Unable to connect to the server. Please make sure the backend is running.',
+        [{ text: 'OK' }]
+      );
+      setMediaItems([]);
     } finally {
       setIsLoading(false);
       setRefreshing(false);
