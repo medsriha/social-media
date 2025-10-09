@@ -47,6 +47,8 @@ package-lock.json
 dist/
 web-build/
 
+src/utils/apiConfig.ts
+
 # Bundle artifacts
 *.jsbundle
 
