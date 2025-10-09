@@ -58,6 +58,7 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
   const [editingMedia, setEditingMedia] = useState<MediaItem | null>(null);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [mediaPermission, requestMediaPermission] = MediaLibrary.usePermissions();
+  const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
   const videoRef = useRef<Video>(null);
 
   useEffect(() => {
@@ -285,6 +286,7 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
     if (selectedMedia) {
       setSelectedMedia(null);
       setCurrentSegmentIndex(0);
+      setIsCaptionExpanded(false);
     } else if (onBack) {
       onBack();
     }
@@ -555,6 +557,7 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
     const handlePress = () => {
       setSelectedMedia(item);
       setCurrentSegmentIndex(0);
+      setIsCaptionExpanded(false);
     };
 
     // Create varying heights for masonry effect
@@ -614,14 +617,16 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
             )}
           </View>
           
-          {/* Heart icon */}
-          <TouchableOpacity
-            style={styles.heartButton}
-            onPress={handleDelete}
-            activeOpacity={0.7}
-          >
-            <MaterialIcons name="favorite-border" size={24} color="#fff" />
-          </TouchableOpacity>
+          {/* Heart icon - only show on public media */}
+          {item.published && (
+            <TouchableOpacity
+              style={styles.heartButton}
+              onPress={handleDelete}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="favorite-border" size={24} color="#fff" />
+            </TouchableOpacity>
+          )}
         </TouchableOpacity>
       </View>
     );
@@ -724,10 +729,30 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
           <MaterialIcons name="edit" size={24} color="#fff" />
         </TouchableOpacity>
 
-        <View style={styles.videoInfo}>
-          {selectedMedia.caption && (
-            <Text style={styles.captionText}>{selectedMedia.caption}</Text>
-          )}
+        {/* Caption - TikTok style */}
+        {selectedMedia.caption && (
+          <View style={styles.captionContainer}>
+            <Text 
+              style={styles.captionText}
+              numberOfLines={isCaptionExpanded ? undefined : 2}
+            >
+              {selectedMedia.caption}
+            </Text>
+            {selectedMedia.caption.length > 80 && (
+              <TouchableOpacity 
+                onPress={() => setIsCaptionExpanded(!isCaptionExpanded)}
+                style={styles.moreButton}
+              >
+                <Text style={styles.moreButtonText}>
+                  {isCaptionExpanded ? 'less' : 'more'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* Date - bottom left corner */}
+        <View style={styles.dateContainer}>
           <Text style={styles.videoDate}>
             {formatDate(selectedMedia.timestamp)}
           </Text>
@@ -978,11 +1003,14 @@ const styles = StyleSheet.create({
     fontSize: 40,
   },
   captionText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-    lineHeight: 22,
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#fff',
+    lineHeight: 20,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+    flex: 1,
   },
   emptyContainer: {
     flex: 1,
@@ -1009,6 +1037,30 @@ const styles = StyleSheet.create({
   fullVideo: {
     flex: 1,
   },
+  captionContainer: {
+    position: 'absolute',
+    bottom: 80,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+  },
+  moreButton: {
+    marginLeft: 4,
+    paddingHorizontal: 4,
+  },
+  moreButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    opacity: 0.8,
+  },
+  dateContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 16,
+  },
   videoInfo: {
     backgroundColor: 'transparent',
     padding: 16,
@@ -1027,11 +1079,13 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   videoDate: {
-    fontSize: 14,
+    fontSize: 11,
     color: '#fff',
+    fontWeight: '400',
+    opacity: 0.7,
     textShadowColor: 'rgba(0, 0, 0, 0.8)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    textShadowRadius: 3,
   },
   mediaBackButton: {
     position: 'absolute',
