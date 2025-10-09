@@ -620,31 +620,36 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
             </View>
           )}
           
-          {/* Public/Private badge for gallery - only show when not in delete mode */}
+          {/* Public/Private badge for gallery - only icon, no text */}
           {!isInDeleteMode && (
             <View style={styles.galleryStatusBadge}>
-              {item.published ? (
-                <>
-                  <MaterialIcons name="public" size={14} color="#fff" />
-                  <Text style={styles.galleryStatusText}>Public</Text>
-                </>
-              ) : (
-                <>
-                  <MaterialIcons name="lock" size={14} color="#fff" />
-                  <Text style={styles.galleryStatusText}>Private</Text>
-                </>
-              )}
+              <MaterialIcons 
+                name={item.published ? "public" : "lock"} 
+                size={16} 
+                color="#fff" 
+              />
             </View>
           )}
           
-          {/* Heart icon - only show on public media for likes when not in delete mode */}
+          {/* Heart and Comments stack - only for public media when not in delete mode */}
           {!isInDeleteMode && item.published && (
-            <TouchableOpacity
-              style={styles.heartButton}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="favorite-border" size={24} color="#fff" />
-            </TouchableOpacity>
+            <View style={styles.socialActionsStack}>
+              <TouchableOpacity
+                style={styles.socialActionButton}
+                activeOpacity={0.7}
+              >
+                <MaterialIcons name="favorite-border" size={22} color="#fff" />
+                <Text style={styles.socialActionCount}>0</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.socialActionButton}
+                activeOpacity={0.7}
+              >
+                <MaterialIcons name="chat-bubble-outline" size={22} color="#fff" />
+                <Text style={styles.socialActionCount}>0</Text>
+              </TouchableOpacity>
+            </View>
           )}
 
           {/* Delete mode overlay - shows when long pressed */}
@@ -972,18 +977,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  heartButton: {
+  socialActionsStack: {
     position: 'absolute',
     bottom: 12,
     right: 12,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'center',
+    flexDirection: 'column',
+    gap: 12,
+    alignItems: 'flex-end',
+  },
+  socialActionButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.3)',
+    gap: 4,
+  },
+  socialActionCount: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   deleteOverlay: {
     position: 'absolute',
@@ -1018,18 +1031,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 12,
     left: 12,
-    flexDirection: 'row',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 12,
-    gap: 4,
-  },
-  galleryStatusText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '600',
   },
   mediaTypeIndicator: {
     position: 'absolute',
