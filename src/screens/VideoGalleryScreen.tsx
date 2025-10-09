@@ -66,29 +66,29 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
     try {
       const allMedia: MediaItem[] = [];
 
-      // Load published media (with metadata)
-      const publishedDirectory = `${FileSystem.documentDirectory}published/`;
-      const publishedDirInfo = await FileSystem.getInfoAsync(publishedDirectory);
+      // Load public media (with metadata)
+      const publicDirectory = `${FileSystem.documentDirectory}public/`;
+      const publicDirInfo = await FileSystem.getInfoAsync(publicDirectory);
 
-      if (publishedDirInfo.exists) {
-        const publishedFiles = await FileSystem.readDirectoryAsync(publishedDirectory);
-        const metadataFiles = publishedFiles.filter((file) => file.endsWith('.json'));
+      if (publicDirInfo.exists) {
+        const publicFiles = await FileSystem.readDirectoryAsync(publicDirectory);
+        const metadataFiles = publicFiles.filter((file) => file.endsWith('.json'));
 
-        const publishedPromises = metadataFiles.map(async (filename) => {
+        const publicPromises = metadataFiles.map(async (filename) => {
           try {
-            const metadataUri = `${publishedDirectory}${filename}`;
+            const metadataUri = `${publicDirectory}${filename}`;
             const metadataContent = await FileSystem.readAsStringAsync(metadataUri);
             const metadata: MediaItem = JSON.parse(metadataContent);
             return metadata;
           } catch (error) {
-            console.error('Error reading published metadata:', error);
+            console.error('Error reading public metadata:', error);
             return null;
           }
         });
 
-        const publishedResults = await Promise.all(publishedPromises);
-        const validPublished = publishedResults.filter((item): item is MediaItem => item !== null);
-        allMedia.push(...validPublished);
+        const publicResults = await Promise.all(publicPromises);
+        const validPublic = publicResults.filter((item): item is MediaItem => item !== null);
+        allMedia.push(...validPublic);
       }
 
       // Load videos (with metadata if available)
@@ -200,9 +200,18 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
   };
 
   const deleteMedia = async (media: MediaItem) => {
+    // Different warning based on public status
+    const title = media.published 
+      ? `⚠️ Delete Public ${media.type === 'video' ? 'Video' : 'Photo'}`
+      : `Delete ${media.type === 'video' ? 'Video' : 'Photo'}`;
+    
+    const message = media.published
+      ? `This ${media.type} is public and visible to everyone. Deleting it will permanently remove it. Are you sure you want to continue?`
+      : `Are you sure you want to delete this ${media.type}?`;
+    
     Alert.alert(
-      `Delete ${media.type === 'video' ? 'Video' : 'Photo'}`,
-      `Are you sure you want to delete this ${media.type}?`,
+      title,
+      message,
       [
         {
           text: 'Cancel',
@@ -267,11 +276,11 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
   };
 
   const handleEditMedia = async (media: MediaItem) => {
-    // Check if media is published
+    // Check if media is public
     if (media.published) {
       Alert.alert(
-        'Published Media',
-        'This media has already been published and cannot be edited. Would you like to duplicate it as a new media and edit the copy?',
+        'Public Media',
+        'This media is already public and cannot be edited. Would you like to duplicate it as a new media and edit the copy?',
         [
           {
             text: 'Cancel',
@@ -286,7 +295,7 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
                 const extension = media.type === 'photo' ? 'jpg' : 'mp4';
                 const filename = `${media.type}_${timestamp}.${extension}`;
                 
-                // Determine target directory (unpublished media goes to photos/videos directory)
+                // Determine target directory (private media goes to photos/videos directory)
                 const targetDirectory = media.type === 'photo' 
                   ? `${FileSystem.documentDirectory}photos/`
                   : `${FileSystem.documentDirectory}videos/`;
@@ -305,7 +314,7 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
                   to: newUri,
                 });
                 
-                // Create new metadata (duplicate caption and emojis, but mark as unpublished)
+                // Create new metadata (duplicate caption and emojis, but mark as not public)
                 const newMetadata: MediaItem = {
                   uri: newUri,
                   filename,
@@ -337,7 +346,7 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
         ]
       );
     } else {
-      // Media is not published, allow editing
+      // Media is not public, allow editing
       setEditingMedia(media);
       setShowEditor(true);
     }
@@ -348,7 +357,7 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
     setEditingMedia(null);
   };
 
-  const handlePublishFromGallery = async (data: {
+  const handleMakePublicFromGallery = async (data: {
     uri: string;
     caption: string;
     emojis: any[];
@@ -362,26 +371,26 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
       if (!mediaPermission?.granted) {
         const { status } = await requestMediaPermission();
         if (status !== 'granted') {
-          Alert.alert('Permission Required', 'Media library permission is needed to publish');
+          Alert.alert('Permission Required', 'Media library permission is needed to make this public');
           return;
         }
       }
 
-      // Create published directory
-      const publishedDirectory = `${FileSystem.documentDirectory}published/`;
-      const dirInfo = await FileSystem.getInfoAsync(publishedDirectory);
+      // Create public directory
+      const publicDirectory = `${FileSystem.documentDirectory}public/`;
+      const dirInfo = await FileSystem.getInfoAsync(publicDirectory);
       
       if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(publishedDirectory, { intermediates: true });
+        await FileSystem.makeDirectoryAsync(publicDirectory, { intermediates: true });
       }
 
       // Generate unique filename
       const timestamp = new Date().getTime();
       const extension = data.type === 'photo' ? 'jpg' : 'mp4';
       const filename = `${data.type}_${timestamp}.${extension}`;
-      const newUri = `${publishedDirectory}${filename}`;
+      const newUri = `${publicDirectory}${filename}`;
 
-      // Copy the media to published storage
+      // Copy the media to public storage
       await FileSystem.copyAsync({
         from: editingMedia.uri,
         to: newUri,
@@ -389,7 +398,7 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
 
       // Save metadata
       const metadataFilename = `${data.type}_${timestamp}.json`;
-      const metadataUri = `${publishedDirectory}${metadataFilename}`;
+      const metadataUri = `${publicDirectory}${metadataFilename}`;
       
       const metadata = {
         uri: newUri,
@@ -409,17 +418,17 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
         await MediaLibrary.saveToLibraryAsync(editingMedia.uri);
       }
 
-      Alert.alert('Success', `${data.type === 'photo' ? 'Photo' : 'Video'} published to feed!`);
+      Alert.alert('Success', `${data.type === 'photo' ? 'Photo' : 'Video'} is now public!`);
       
-      // Reload media to show the published item
+      // Reload media to show the public item
       await loadMedia();
       
       setShowEditor(false);
       setEditingMedia(null);
       setSelectedMedia(null);
     } catch (error) {
-      console.error('Error publishing:', error);
-      Alert.alert('Error', 'Failed to publish media');
+      console.error('Error making public:', error);
+      Alert.alert('Error', 'Failed to make media public');
     }
   };
 
@@ -516,9 +525,9 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
           />
         </View>
         
-        {/* Published badge */}
+        {/* Public badge */}
         {item.published && (
-          <View style={styles.publishedBadge}>
+          <View style={styles.publicBadge}>
             <MaterialIcons name="public" size={12} color="#fff" />
           </View>
         )}
@@ -547,7 +556,7 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
         isFromGallery={true}
         onBack={handleEditorBack}
         onAddSegments={editingMedia.type === 'video' ? handleAddSegments : undefined}
-        onPublish={handlePublishFromGallery}
+        onMakePublic={handleMakePublicFromGallery}
         onSaveToGallery={handleSaveFromGallery}
         onDelete={handleDeleteFromEditor}
       />
@@ -623,7 +632,7 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
           <Text style={styles.videoTitle}>{selectedMedia.filename}</Text>
           <Text style={styles.videoDate}>
             {formatDate(selectedMedia.timestamp)}
-            {selectedMedia.published && ' • Published'}
+            {selectedMedia.published && ' • Public'}
           </Text>
         </View>
 
@@ -776,7 +785,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
   },
-  publishedBadge: {
+  publicBadge: {
     position: 'absolute',
     bottom: 6,
     right: 6,

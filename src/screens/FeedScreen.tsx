@@ -51,23 +51,23 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const loadPublishedMedia = useCallback(async () => {
+  const loadPublicMedia = useCallback(async () => {
     try {
-      const publishedDirectory = `${FileSystem.documentDirectory}published/`;
-      const dirInfo = await FileSystem.getInfoAsync(publishedDirectory);
+      const publicDirectory = `${FileSystem.documentDirectory}public/`;
+      const dirInfo = await FileSystem.getInfoAsync(publicDirectory);
 
       if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(publishedDirectory, { intermediates: true });
+        await FileSystem.makeDirectoryAsync(publicDirectory, { intermediates: true });
         setMediaItems([]);
         return;
       }
 
-      const files = await FileSystem.readDirectoryAsync(publishedDirectory);
+      const files = await FileSystem.readDirectoryAsync(publicDirectory);
       const metadataFiles = files.filter((file) => file.endsWith('.json'));
 
       const mediaPromises = metadataFiles.map(async (filename) => {
         try {
-          const metadataUri = `${publishedDirectory}${filename}`;
+          const metadataUri = `${publicDirectory}${filename}`;
           const metadataContent = await FileSystem.readAsStringAsync(metadataUri);
           const metadata: MediaItem = JSON.parse(metadataContent);
           return metadata;
@@ -84,7 +84,7 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
       validMedia.sort((a, b) => b.timestamp - a.timestamp);
       setMediaItems(validMedia);
     } catch (error) {
-      console.error('Error loading published media:', error);
+      console.error('Error loading public media:', error);
     } finally {
       setIsLoading(false);
       setRefreshing(false);
@@ -92,13 +92,13 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
   }, []);
 
   useEffect(() => {
-    loadPublishedMedia();
-  }, [loadPublishedMedia]);
+    loadPublicMedia();
+  }, [loadPublicMedia]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    loadPublishedMedia();
-  }, [loadPublishedMedia]);
+    loadPublicMedia();
+  }, [loadPublicMedia]);
 
   const formatTimeAgo = (timestamp: number) => {
     const now = Date.now();
@@ -186,7 +186,7 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
       <MaterialIcons name="video-library" size={80} color="#666" />
       <Text style={styles.emptyTitle}>No Posts Yet</Text>
       <Text style={styles.emptySubtitle}>
-        Start creating and publishing your first post!
+        Start creating and sharing your first post!
       </Text>
       <TouchableOpacity style={styles.recordBannerButton} onPress={onRecordVideo}>
         <MaterialIcons name="videocam" size={24} color="#fff" />

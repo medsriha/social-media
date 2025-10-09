@@ -25,14 +25,14 @@ export interface MediaMetadata {
 /**
  * Get the directory for a specific media type
  */
-export const getMediaDirectory = (type: 'photo' | 'video' | 'published'): string => {
-  return `${FileSystem.documentDirectory}${type === 'photo' ? 'photos' : type === 'video' ? 'videos' : 'published'}/`;
+export const getMediaDirectory = (type: 'photo' | 'video' | 'public'): string => {
+  return `${FileSystem.documentDirectory}${type === 'photo' ? 'photos' : type === 'video' ? 'videos' : 'public'}/`;
 };
 
 /**
  * Ensure a media directory exists
  */
-export const ensureMediaDirectoryExists = async (type: 'photo' | 'video' | 'published'): Promise<void> => {
+export const ensureMediaDirectoryExists = async (type: 'photo' | 'video' | 'public'): Promise<void> => {
   const directory = getMediaDirectory(type);
   const dirInfo = await FileSystem.getInfoAsync(directory);
 
@@ -54,8 +54,8 @@ export const saveMediaMetadata = async (
   try {
     // Determine the directory based on the media URI
     let directory: string;
-    if (mediaUri.includes('/published/')) {
-      directory = getMediaDirectory('published');
+    if (mediaUri.includes('/public/')) {
+      directory = getMediaDirectory('public');
     } else if (mediaUri.includes('/photos/')) {
       directory = getMediaDirectory('photo');
     } else if (mediaUri.includes('/videos/')) {
@@ -225,7 +225,7 @@ export const saveToMediaLibrary = async (mediaUri: string): Promise<void> => {
  * @param type - Type of media to load
  * @returns Array of media metadata
  */
-export const getAllMedia = async (type: 'photo' | 'video' | 'published'): Promise<MediaMetadata[]> => {
+export const getAllMedia = async (type: 'photo' | 'video' | 'public'): Promise<MediaMetadata[]> => {
   await ensureMediaDirectoryExists(type);
   
   const directory = getMediaDirectory(type);
@@ -233,7 +233,7 @@ export const getAllMedia = async (type: 'photo' | 'video' | 'published'): Promis
   
   // Filter for media files
   const mediaFiles = files.filter((file) => {
-    if (type === 'photo' || type === 'published') {
+    if (type === 'photo' || type === 'public') {
       return file.match(/\.(jpg|jpeg|png|mp4)$/);
     }
     return file.endsWith('.mp4');

@@ -36,7 +36,7 @@ interface MediaEditorScreenProps {
   isFromGallery?: boolean;
   onBack: () => void;
   onAddSegments?: () => void; // For videos from gallery - return to camera to add more segments
-  onPublish: (data: {
+  onMakePublic: (data: {
     uri: string;
     caption: string;
     emojis: EmojiOverlay[];
@@ -64,7 +64,7 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
   isFromGallery = false,
   onBack,
   onAddSegments,
-  onPublish,
+  onMakePublic,
   onSaveToGallery,
   onDelete,
 }) => {
@@ -104,10 +104,10 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
     setEmojis(emojis.filter((e) => e.id !== id));
   };
 
-  const handlePublish = async () => {
+  const handleMakePublic = async () => {
     setIsProcessing(true);
     try {
-      onPublish({
+      onMakePublic({
         uri: mediaUri,
         caption: caption.trim(),
         emojis,
@@ -115,8 +115,8 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
         segments: videoSegments,
       });
     } catch (error) {
-      console.error('Error publishing:', error);
-      Alert.alert('Error', 'Failed to publish media');
+      console.error('Error making public:', error);
+      Alert.alert('Error', 'Failed to make media public');
       setIsProcessing(false);
     }
   };
@@ -353,10 +353,10 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
             <View style={styles.actionButtonsRow}>
               <TouchableOpacity
                 style={[styles.publishButton, isProcessing && styles.buttonDisabled]}
-                onPress={handlePublish}
+                onPress={handleMakePublic}
                 disabled={isProcessing}
               >
-                <MaterialIcons name="send" size={20} color="#fff" />
+                <MaterialIcons name="public" size={20} color="#fff" />
                 <Text style={styles.publishButtonText}>
                   {isProcessing ? 'Publishing...' : 'Publish'}
                 </Text>

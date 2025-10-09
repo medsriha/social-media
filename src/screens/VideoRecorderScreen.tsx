@@ -338,7 +338,7 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
     setPhotoUri(null);
   };
 
-  const handlePublish = async (data: {
+  const handleMakePublic = async (data: {
     uri: string;
     caption: string;
     emojis: any[];
@@ -350,29 +350,29 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
       if (!mediaPermission?.granted) {
         const { status } = await requestMediaPermission();
         if (status !== 'granted') {
-          Alert.alert('Permission Required', 'Media library permission is needed to publish');
+          Alert.alert('Permission Required', 'Media library permission is needed to make this public');
           return;
         }
       }
 
-      // Create published directory
-      const publishedDirectory = `${FileSystem.documentDirectory}published/`;
-      const dirInfo = await FileSystem.getInfoAsync(publishedDirectory);
+      // Create public directory
+      const publicDirectory = `${FileSystem.documentDirectory}public/`;
+      const dirInfo = await FileSystem.getInfoAsync(publicDirectory);
       
       if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(publishedDirectory, { intermediates: true });
+        await FileSystem.makeDirectoryAsync(publicDirectory, { intermediates: true });
       }
 
       // Generate unique filename
       const timestamp = new Date().getTime();
       const extension = data.type === 'photo' ? 'jpg' : 'mp4';
       const filename = `${data.type}_${timestamp}.${extension}`;
-      const newUri = `${publishedDirectory}${filename}`;
+      const newUri = `${publicDirectory}${filename}`;
 
       // Use the source based on editing mode
       const sourceUri = data.uri;
 
-      // Copy the media to published storage
+      // Copy the media to public storage
       await FileSystem.copyAsync({
         from: sourceUri,
         to: newUri,
@@ -380,7 +380,7 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
 
       // Save metadata (caption and emojis)
       const metadataFilename = `${data.type}_${timestamp}.json`;
-      const metadataUri = `${publishedDirectory}${metadataFilename}`;
+      const metadataUri = `${publicDirectory}${metadataFilename}`;
       
       const metadata = {
         uri: newUri,
@@ -415,7 +415,7 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
         }
       }
 
-      Alert.alert('Success', `${data.type === 'photo' ? 'Photo' : 'Video'} published to feed!`);
+      Alert.alert('Success', `${data.type === 'photo' ? 'Photo' : 'Video'} is now public!`);
       
       if (onVideoSaved) {
         onVideoSaved(newUri);
@@ -431,8 +431,8 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
       setIsPaused(false);
       setOriginalVideoUri(null);
     } catch (error) {
-      console.error('Error publishing:', error);
-      Alert.alert('Error', 'Failed to publish media');
+      console.error('Error making public:', error);
+      Alert.alert('Error', 'Failed to make media public');
     }
   };
 
@@ -561,7 +561,7 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
         initialCaption=""
         initialEmojis={[]}
         onBack={handleEditorBack}
-        onPublish={handlePublish}
+        onMakePublic={handleMakePublic}
         onSaveToGallery={handleSaveToGallery}
         onDelete={handleEditorDelete}
       />
