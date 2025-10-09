@@ -1,6 +1,6 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean
 from sqlalchemy.ext.declarative import declarative_base
@@ -71,8 +71,71 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files
-app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
+# Custom video streaming endpoint with range request support
+@app.get("/media/{filename}")
+async def serve_media(filename: str, request: Request):
+    """
+    Serve media files with proper video streaming support (HTTP range requests)
+    """
+    file_path = os.path.join(MEDIA_DIR, filename)
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Media not found")
+    
+    file_size = os.path.getsize(file_path)
+    
+    # Check if this is a video file
+    is_video = filename.lower().endswith(('.mp4', '.mov', '.avi', '.mkv', '.webm'))
+    
+    # Get range header for video streaming
+    range_header = request.headers.get("range")
+    
+    if is_video and range_header:
+        # Parse range header (format: "bytes=start-end")
+        range_match = range_header.replace("bytes=", "").split("-")
+        start = int(range_match[0]) if range_match[0] else 0
+        end = int(range_match[1]) if len(range_match) > 1 and range_match[1] else file_size - 1
+        
+        # Ensure end doesn't exceed file size
+        end = min(end, file_size - 1)
+        chunk_size = end - start + 1
+        
+        # Read the requested chunk
+        def iter_file():
+            with open(file_path, "rb") as f:
+                f.seek(start)
+                remaining = chunk_size
+                while remaining:
+                    chunk = f.read(min(8192, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    yield chunk
+        
+        # Determine content type
+        content_type = "video/quicktime" if filename.endswith('.mov') else "video/mp4"
+        
+        headers = {
+            "Content-Range": f"bytes {start}-{end}/{file_size}",
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(chunk_size),
+            "Content-Type": content_type,
+        }
+        
+        return StreamingResponse(iter_file(), status_code=206, headers=headers)
+    else:
+        # For images or full file requests, return the whole file
+        media_type = None
+        if filename.endswith('.jpg') or filename.endswith('.jpeg'):
+            media_type = "image/jpeg"
+        elif filename.endswith('.png'):
+            media_type = "image/png"
+        elif filename.endswith('.mov'):
+            media_type = "video/quicktime"
+        elif filename.endswith('.mp4'):
+            media_type = "video/mp4"
+        
+        return FileResponse(file_path, media_type=media_type, headers={"Accept-Ranges": "bytes"})
 
 # Dependency to get database session
 def get_db():
