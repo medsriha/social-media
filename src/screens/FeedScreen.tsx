@@ -475,7 +475,7 @@ const styles = StyleSheet.create({
   rightActions: {
     position: 'absolute',
     right: 12,
-    bottom: 120,
+    bottom: 200, // Moved higher to avoid caption overlap
     gap: 20,
   },
   actionButton: {
