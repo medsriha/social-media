@@ -19,14 +19,14 @@ import { MediaEditorScreen } from '../components/MediaEditorScreen';
 import { saveMediaMetadata } from '../utils/mediaStorage';
 import { uploadMedia } from '../utils/api';
 
-interface VideoRecorderScreenProps {
+interface MediaRecorderScreenProps {
   onBack?: () => void;
   onVideoSaved?: (uri: string) => void;
   existingVideoUri?: string | null;
   existingVideoSegments?: string[];
 }
 
-export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
+export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
   onBack,
   onVideoSaved,
   existingVideoUri,
