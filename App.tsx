@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { FeedScreen } from './src/screens/FeedScreen';
 import { VideoRecorderScreen } from './src/screens/VideoRecorderScreen';
-import { VideoGalleryScreen } from './src/screens/VideoGalleryScreen';
+import { MediaGalleryScreen } from './src/screens/MediaGalleryScreen';
 
 type Screen = 'feed' | 'recorder' | 'gallery';
 
@@ -56,7 +56,7 @@ export default function App() {
         );
       case 'gallery':
         return (
-          <VideoGalleryScreen
+          <MediaGalleryScreen
             onBack={navigateToFeed}
             onRecordMoreSegments={navigateToRecorderWithVideo}
           />
