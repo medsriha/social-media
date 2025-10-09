@@ -16,6 +16,7 @@ import * as MediaLibrary from 'expo-media-library';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { MediaEditorScreen } from '../components/MediaEditorScreen';
+import { saveMediaMetadata } from '../utils/mediaStorage';
 
 const { width } = Dimensions.get('window');
 const ITEM_SIZE = (width - 32) / 3; // 3 columns with minimal spacing
@@ -360,42 +361,27 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
     try {
       if (!editingMedia) return;
 
-      // Determine which directory to save metadata to
-      const directory = editingMedia.published
-        ? `${FileSystem.documentDirectory}published/`
-        : data.type === 'photo'
-        ? `${FileSystem.documentDirectory}photos/`
-        : `${FileSystem.documentDirectory}videos/`;
-      
-      // Extract timestamp from original filename
-      const timestampMatch = editingMedia.filename.match(/(\d+)/);
-      const timestamp = timestampMatch ? parseInt(timestampMatch[1]) : Date.now();
-      
-      // Save metadata
-      const metadataFilename = editingMedia.filename.replace(/\.(jpg|jpeg|png|mp4)$/, '.json');
-      const metadataUri = `${directory}${metadataFilename}`;
-      
-      const metadata = {
-        uri: editingMedia.uri,
-        filename: editingMedia.filename,
-        timestamp,
+      // Use the new saveMediaMetadata utility
+      const success = await saveMediaMetadata(editingMedia.uri, {
         type: data.type,
         caption: data.caption,
         emojis: data.emojis,
-        published: editingMedia.published || false,
         segments: data.segments,
-      };
+        published: editingMedia.published || false,
+      });
 
-      await FileSystem.writeAsStringAsync(metadataUri, JSON.stringify(metadata));
-
-      Alert.alert('Success', 'Changes saved successfully!');
-      
-      // Reload media
-      await loadMedia();
-      
-      setShowEditor(false);
-      setEditingMedia(null);
-      setSelectedMedia(null);
+      if (success) {
+        Alert.alert('Success', 'Changes saved successfully!');
+        
+        // Reload media
+        await loadMedia();
+        
+        setShowEditor(false);
+        setEditingMedia(null);
+        setSelectedMedia(null);
+      } else {
+        throw new Error('Failed to save metadata');
+      }
     } catch (error) {
       console.error('Error saving:', error);
       Alert.alert('Error', 'Failed to save changes');

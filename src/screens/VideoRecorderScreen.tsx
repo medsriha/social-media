@@ -15,6 +15,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { MediaEditorScreen } from '../components/MediaEditorScreen';
+import { saveMediaMetadata } from '../utils/mediaStorage';
 
 interface VideoRecorderScreenProps {
   onBack?: () => void;
@@ -457,28 +458,22 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
         }
       }
 
-      // If editing existing video, save to the same location and overwrite
+      // If editing existing video, save to the same location and overwrite metadata
       if (originalVideoUri && data.type === 'video') {
-        // Save metadata with updated caption/emojis
-        const metadataFilename = originalVideoUri.replace(/\.mp4$/, '.json');
-        
-        const timestampMatch = originalVideoUri.match(/video_(\d+)\.mp4/);
-        const timestamp = timestampMatch ? parseInt(timestampMatch[1]) : Date.now();
-        
-        const metadata = {
-          uri: originalVideoUri,
-          filename: originalVideoUri.split('/').pop() || `video_${timestamp}.mp4`,
-          timestamp,
+        // Use the new saveMediaMetadata utility
+        const success = await saveMediaMetadata(originalVideoUri, {
           type: data.type,
           caption: data.caption,
           emojis: data.emojis,
           published: false,
-          segments: data.segments, // Store all video segments
-        };
+          segments: data.segments,
+        });
 
-        await FileSystem.writeAsStringAsync(metadataFilename, JSON.stringify(metadata));
-
-        Alert.alert('Success', 'Video updated in gallery!');
+        if (success) {
+          Alert.alert('Success', 'Video updated in gallery!');
+        } else {
+          throw new Error('Failed to save metadata');
+        }
       } else {
         // New media - save to gallery
         const directory = data.type === 'photo' 
@@ -503,24 +498,14 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
           to: newUri,
         });
 
-        // Save metadata if there are captions or emojis
-        if (data.caption || data.emojis.length > 0) {
-          const metadataFilename = `${data.type}_${timestamp}.json`;
-          const metadataUri = `${directory}${metadataFilename}`;
-          
-          const metadata = {
-            uri: newUri,
-            filename,
-            timestamp,
-            type: data.type,
-            caption: data.caption,
-            emojis: data.emojis,
-            published: false,
-            segments: data.segments, // Store all video segments
-          };
-
-          await FileSystem.writeAsStringAsync(metadataUri, JSON.stringify(metadata));
-        }
+        // Save metadata using the new utility
+        await saveMediaMetadata(newUri, {
+          type: data.type,
+          caption: data.caption,
+          emojis: data.emojis,
+          published: false,
+          segments: data.segments,
+        });
 
         // Optionally save to device's media library
         if (Platform.OS !== 'web') {
