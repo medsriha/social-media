@@ -4,31 +4,11 @@
  */
 
 import { Platform } from 'react-native';
+import { getApiBaseUrl } from './apiConfig';
 
-// API Configuration
-// For iOS Simulator: localhost works
-// For Android Emulator: use 10.0.2.2
-// For physical devices: use your computer's local IP (e.g., 192.168.1.100)
-const getBaseUrl = (): string => {
-  // Using IP address for all platforms to ensure connectivity
-  // This works for iOS Simulator, Android Emulator, and Physical Devices
-  const API_URL = '<your-ip-address>:8000';
-  
-  console.log(`📱 Platform: ${Platform.OS}`);
-  
-  if (Platform.OS === 'android') {
-    // Android can also use 'http://10.0.2.2:8000' if on same machine
-    return API_URL;
-  }
-  if (Platform.OS === 'ios') {
-    // iOS Simulator - using IP address instead of localhost
-    return API_URL;
-  }
-  // Web - you may want to use 'http://localhost:8000' for web
-  return API_URL;
-};
-
-export const API_BASE_URL = getBaseUrl();
+// API Configuration is now in apiConfig.ts
+// You can modify apiConfig.ts locally without git tracking changes
+export const API_BASE_URL = getApiBaseUrl();
 
 console.log('🌐 API Base URL:', API_BASE_URL);  // Debug log
 
