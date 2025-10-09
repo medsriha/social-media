@@ -10,6 +10,7 @@ export interface EmojiOverlay {
 }
 
 export interface MediaMetadata {
+  id?: number; // Backend database ID (only for published media)
   uri: string;
   filename: string;
   timestamp: number;
@@ -87,6 +88,7 @@ export const saveMediaMetadata = async (
 
     // Merge existing metadata with new metadata
     const updatedMetadata: MediaMetadata = {
+      id: metadata.id !== undefined ? metadata.id : existingMetadata.id, // Backend database ID
       uri: mediaUri,
       filename: mediaFilename,
       timestamp: existingMetadata.timestamp || Date.now(),
@@ -134,6 +136,8 @@ export const loadMediaMetadata = async (mediaUri: string): Promise<MediaMetadata
     // Read and parse metadata
     const metadataContent = await FileSystem.readAsStringAsync(metadataUri);
     const metadata: MediaMetadata = JSON.parse(metadataContent);
+    
+    console.log('Loaded metadata for:', mediaFilename, 'ID:', metadata.id);
 
     return metadata;
   } catch (error) {
