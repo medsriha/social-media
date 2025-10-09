@@ -13,6 +13,7 @@ import {
 import { Video, ResizeMode } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
+import * as Haptics from 'expo-haptics';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { MediaEditorScreen } from '../components/MediaEditorScreen';
@@ -59,6 +60,7 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [mediaPermission, requestMediaPermission] = MediaLibrary.usePermissions();
   const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<string | null>(null); // Track which item is in delete mode
   const videoRef = useRef<Video>(null);
 
   useEffect(() => {
@@ -550,14 +552,28 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
   };
 
   const renderMediaItem = ({ item, index }: { item: MediaItem; index: number }) => {
+    const itemKey = `${item.filename}-${item.timestamp}`;
+    const isInDeleteMode = deleteMode === itemKey;
+
     const handleDelete = () => {
+      setDeleteMode(null);
       deleteMedia(item);
     };
 
     const handlePress = () => {
-      setSelectedMedia(item);
-      setCurrentSegmentIndex(0);
-      setIsCaptionExpanded(false);
+      if (isInDeleteMode) {
+        setDeleteMode(null);
+      } else {
+        setSelectedMedia(item);
+        setCurrentSegmentIndex(0);
+        setIsCaptionExpanded(false);
+      }
+    };
+
+    const handleLongPress = () => {
+      // Trigger haptic feedback
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setDeleteMode(itemKey);
     };
 
     // Create varying heights for masonry effect
@@ -572,6 +588,8 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
         <TouchableOpacity
           style={styles.videoTouchable}
           onPress={handlePress}
+          onLongPress={handleLongPress}
+          delayLongPress={500}
           activeOpacity={0.9}
         >
           {item.type === 'photo' ? (
@@ -602,30 +620,58 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
             </View>
           )}
           
-          {/* Public/Private badge for gallery */}
-          <View style={styles.galleryStatusBadge}>
-            {item.published ? (
-              <>
-                <MaterialIcons name="public" size={14} color="#fff" />
-                <Text style={styles.galleryStatusText}>Public</Text>
-              </>
-            ) : (
-              <>
-                <MaterialIcons name="lock" size={14} color="#fff" />
-                <Text style={styles.galleryStatusText}>Private</Text>
-              </>
-            )}
-          </View>
+          {/* Public/Private badge for gallery - only show when not in delete mode */}
+          {!isInDeleteMode && (
+            <View style={styles.galleryStatusBadge}>
+              {item.published ? (
+                <>
+                  <MaterialIcons name="public" size={14} color="#fff" />
+                  <Text style={styles.galleryStatusText}>Public</Text>
+                </>
+              ) : (
+                <>
+                  <MaterialIcons name="lock" size={14} color="#fff" />
+                  <Text style={styles.galleryStatusText}>Private</Text>
+                </>
+              )}
+            </View>
+          )}
           
-          {/* Heart icon - only show on public media */}
-          {item.published && (
+          {/* Heart icon - only show on public media for likes when not in delete mode */}
+          {!isInDeleteMode && item.published && (
             <TouchableOpacity
               style={styles.heartButton}
-              onPress={handleDelete}
               activeOpacity={0.7}
             >
               <MaterialIcons name="favorite-border" size={24} color="#fff" />
             </TouchableOpacity>
+          )}
+
+          {/* Delete mode overlay - shows when long pressed */}
+          {isInDeleteMode && (
+            <>
+              {/* Dark overlay with pulsing effect */}
+              <View style={styles.deleteOverlay} />
+              
+              {/* Delete confirmation buttons - minimalistic */}
+              <View style={styles.deleteActionsContainer}>
+                <TouchableOpacity
+                  style={styles.confirmDeleteButton}
+                  onPress={handleDelete}
+                  activeOpacity={0.6}
+                >
+                  <MaterialIcons name="delete-outline" size={36} color="#ff3b30" />
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.cancelDeleteButton}
+                  onPress={() => setDeleteMode(null)}
+                  activeOpacity={0.6}
+                >
+                  <MaterialIcons name="close" size={36} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </>
           )}
         </TouchableOpacity>
       </View>
@@ -928,7 +974,7 @@ const styles = StyleSheet.create({
   },
   heartButton: {
     position: 'absolute',
-    top: 12,
+    bottom: 12,
     right: 12,
     width: 36,
     height: 36,
@@ -938,6 +984,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 0.5,
     borderColor: 'rgba(255,255,255,0.3)',
+  },
+  deleteOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
+  },
+  deleteActionsContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 20,
+    zIndex: 10,
+  },
+  cancelDeleteButton: {
+    padding: 8,
+  },
+  confirmDeleteButton: {
+    padding: 8,
   },
   galleryStatusBadge: {
     position: 'absolute',
@@ -977,19 +1052,6 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     backgroundColor: 'rgba(0,200,100,0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  deleteIconButton: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
@@ -1146,9 +1208,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
-  },
-  deleteButton: {
-    backgroundColor: '#ff3b30',
   },
   controlButtonText: {
     color: '#fff',
