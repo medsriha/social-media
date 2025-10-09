@@ -7,6 +7,7 @@ import {
   Alert,
   Platform,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { Video, ResizeMode } from 'expo-av';
@@ -16,6 +17,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { MediaEditorScreen } from '../components/MediaEditorScreen';
 import { saveMediaMetadata } from '../utils/mediaStorage';
+import { uploadMedia } from '../utils/api';
 
 interface VideoRecorderScreenProps {
   onBack?: () => void;
@@ -44,6 +46,7 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
   const [editorMediaUri, setEditorMediaUri] = useState<string | null>(null);
   const [editorMediaType, setEditorMediaType] = useState<'photo' | 'video'>('photo');
   const [originalVideoUri, setOriginalVideoUri] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -345,59 +348,82 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
     type: 'photo' | 'video';
     segments?: string[];
   }) => {
+    setIsUploading(true);
     try {
+      // ========================================
+      // IMPORTANT: This UPLOADS media to BACKEND
+      // Media becomes PUBLIC and stored in database
+      // All users can see it in the feed
+      // ========================================
+      
       // Request media library permission if not granted
       if (!mediaPermission?.granted) {
         const { status } = await requestMediaPermission();
         if (status !== 'granted') {
           Alert.alert('Permission Required', 'Media library permission is needed to make this public');
+          setIsUploading(false);
           return;
         }
       }
 
-      // Create public directory
-      const publicDirectory = `${FileSystem.documentDirectory}public/`;
-      const dirInfo = await FileSystem.getInfoAsync(publicDirectory);
+      // Upload media to backend API (PUBLIC)
+      console.log('Uploading PUBLIC media to backend...', { uri: data.uri, type: data.type });
       
+      const uploadResponse = await uploadMedia({
+        fileUri: data.uri,
+        mediaType: data.type,
+        caption: data.caption,
+        emojis: data.emojis,
+        published: true, // PUBLIC - uploads to backend database
+      });
+
+      console.log('Upload successful - media is now public:', uploadResponse);
+      console.log('Backend ID received:', uploadResponse.id);
+
+      // Save to device's LOCAL gallery with metadata (published: true)
+      // This ensures the user has their own copy even after publishing
+      const directory = data.type === 'photo' 
+        ? `${FileSystem.documentDirectory}photos/`
+        : `${FileSystem.documentDirectory}videos/`;
+      
+      const dirInfo = await FileSystem.getInfoAsync(directory);
       if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(publicDirectory, { intermediates: true });
+        await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
       }
 
-      // Generate unique filename
+      // Generate unique filename for local copy
       const timestamp = new Date().getTime();
       const extension = data.type === 'photo' ? 'jpg' : 'mp4';
       const filename = `${data.type}_${timestamp}.${extension}`;
-      const newUri = `${publicDirectory}${filename}`;
+      const localUri = `${directory}${filename}`;
 
-      // Use the source based on editing mode
-      const sourceUri = data.uri;
-
-      // Copy the media to public storage
+      // Copy media to local gallery
       await FileSystem.copyAsync({
-        from: sourceUri,
-        to: newUri,
+        from: data.uri,
+        to: localUri,
       });
 
-      // Save metadata (caption and emojis)
-      const metadataFilename = `${data.type}_${timestamp}.json`;
-      const metadataUri = `${publicDirectory}${metadataFilename}`;
+      console.log('💾 Saving metadata with ID:', uploadResponse.id, 'to:', localUri);
       
-      const metadata = {
-        uri: newUri,
-        filename,
-        timestamp,
+      // Save metadata with published: true and backend ID
+      const metadataSaved = await saveMediaMetadata(localUri, {
+        id: uploadResponse.id, // Save backend database ID
         type: data.type,
         caption: data.caption,
         emojis: data.emojis,
-        published: true,
-        segments: data.segments, // Store all video segments
-      };
+        published: true, // Mark as published
+        segments: data.segments,
+      });
+      
+      console.log('Metadata saved:', metadataSaved);
 
-      await FileSystem.writeAsStringAsync(metadataUri, JSON.stringify(metadata));
-
-      // Optionally save to device's media library
+      // Optionally save to device's media library (Photos app)
       if (Platform.OS !== 'web') {
-        await MediaLibrary.saveToLibraryAsync(sourceUri);
+        try {
+          await MediaLibrary.saveToLibraryAsync(data.uri);
+        } catch (err) {
+          console.log('Could not save to media library:', err);
+        }
       }
 
       // If we were editing an existing video, delete the old one from gallery
@@ -415,10 +441,10 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
         }
       }
 
-      Alert.alert('Success', `${data.type === 'photo' ? 'Photo' : 'Video'} is now public!`);
+      Alert.alert('Success', `${data.type === 'photo' ? 'Photo' : 'Video'} is now public and saved to your gallery!`);
       
       if (onVideoSaved) {
-        onVideoSaved(newUri);
+        onVideoSaved(data.uri);
       }
       
       // Reset all state
@@ -432,7 +458,12 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
       setOriginalVideoUri(null);
     } catch (error) {
       console.error('Error making public:', error);
-      Alert.alert('Error', 'Failed to make media public');
+      Alert.alert(
+        'Upload Failed', 
+        'Failed to upload media to server. Please make sure the backend is running and try again.'
+      );
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -449,6 +480,12 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
     segments?: string[];
   }) => {
     try {
+      // ========================================
+      // IMPORTANT: This saves media LOCALLY ONLY
+      // Media is NOT uploaded to backend
+      // It stays private on the user's device
+      // ========================================
+      
       // Request media library permission if not granted
       if (!mediaPermission?.granted) {
         const { status } = await requestMediaPermission();
@@ -465,17 +502,17 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
           type: data.type,
           caption: data.caption,
           emojis: data.emojis,
-          published: false,
+          published: false, // PRIVATE - stays on device
           segments: data.segments,
         });
 
         if (success) {
-          Alert.alert('Success', 'Video updated in gallery!');
+          Alert.alert('Success', 'Video saved privately to your device!');
         } else {
           throw new Error('Failed to save metadata');
         }
       } else {
-        // New media - save to gallery
+        // New media - save to LOCAL gallery (device only)
         const directory = data.type === 'photo' 
           ? `${FileSystem.documentDirectory}photos/`
           : `${FileSystem.documentDirectory}videos/`;
@@ -492,18 +529,18 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
         const filename = `${data.type}_${timestamp}.${extension}`;
         const newUri = `${directory}${filename}`;
 
-        // Copy the media to gallery storage
+        // Copy the media to LOCAL gallery storage
         await FileSystem.copyAsync({
           from: data.uri,
           to: newUri,
         });
 
-        // Save metadata using the new utility
+        // Save metadata with published: false (PRIVATE)
         await saveMediaMetadata(newUri, {
           type: data.type,
           caption: data.caption,
           emojis: data.emojis,
-          published: false,
+          published: false, // PRIVATE - stays on device, NOT uploaded
           segments: data.segments,
         });
 
@@ -512,7 +549,7 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
           await MediaLibrary.saveToLibraryAsync(data.uri);
         }
 
-        Alert.alert('Success', `${data.type === 'photo' ? 'Photo' : 'Video'} saved to gallery!`);
+        Alert.alert('Success', `${data.type === 'photo' ? 'Photo' : 'Video'} saved privately to your device!`);
       }
       
       if (onVideoSaved) {
@@ -550,6 +587,17 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
       onBack();
     }
   };
+
+  // Show uploading indicator
+  if (isUploading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color="#ff0050" />
+        <Text style={styles.message}>Uploading to server...</Text>
+        <Text style={styles.submessage}>Please wait while we make your media public</Text>
+      </View>
+    );
+  }
 
   // Show MediaEditor if user is editing
   if (showEditor && editorMediaUri) {
