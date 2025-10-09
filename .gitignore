@@ -67,3 +67,4 @@ src/utils/apiConfig.ts
 *.tsbuildinfo
 
 .cursor/rules/*
+docs/*
