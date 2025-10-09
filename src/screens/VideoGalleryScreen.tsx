@@ -266,9 +266,81 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
     }
   };
 
-  const handleEditMedia = (media: MediaItem) => {
-    setEditingMedia(media);
-    setShowEditor(true);
+  const handleEditMedia = async (media: MediaItem) => {
+    // Check if media is published
+    if (media.published) {
+      Alert.alert(
+        'Published Media',
+        'This media has already been published and cannot be edited. Would you like to duplicate it as a new media and edit the copy?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Duplicate & Edit',
+            onPress: async () => {
+              try {
+                // Create a copy of the media
+                const timestamp = new Date().getTime();
+                const extension = media.type === 'photo' ? 'jpg' : 'mp4';
+                const filename = `${media.type}_${timestamp}.${extension}`;
+                
+                // Determine target directory (unpublished media goes to photos/videos directory)
+                const targetDirectory = media.type === 'photo' 
+                  ? `${FileSystem.documentDirectory}photos/`
+                  : `${FileSystem.documentDirectory}videos/`;
+                
+                // Ensure directory exists
+                const dirInfo = await FileSystem.getInfoAsync(targetDirectory);
+                if (!dirInfo.exists) {
+                  await FileSystem.makeDirectoryAsync(targetDirectory, { intermediates: true });
+                }
+                
+                const newUri = `${targetDirectory}${filename}`;
+                
+                // Copy the media file
+                await FileSystem.copyAsync({
+                  from: media.uri,
+                  to: newUri,
+                });
+                
+                // Create new metadata (duplicate caption and emojis, but mark as unpublished)
+                const newMetadata: MediaItem = {
+                  uri: newUri,
+                  filename,
+                  timestamp,
+                  type: media.type,
+                  caption: media.caption,
+                  emojis: media.emojis,
+                  published: false,
+                  segments: media.segments,
+                };
+                
+                // Save metadata
+                const metadataFilename = `${media.type}_${timestamp}.json`;
+                const metadataUri = `${targetDirectory}${metadataFilename}`;
+                await FileSystem.writeAsStringAsync(metadataUri, JSON.stringify(newMetadata));
+                
+                // Open the duplicated media for editing
+                setEditingMedia(newMetadata);
+                setShowEditor(true);
+                
+                // Reload media to show the new duplicate
+                await loadMedia();
+              } catch (error) {
+                console.error('Error duplicating media:', error);
+                Alert.alert('Error', 'Failed to duplicate media');
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      // Media is not published, allow editing
+      setEditingMedia(media);
+      setShowEditor(true);
+    }
   };
 
   const handleEditorBack = () => {
