@@ -20,12 +20,14 @@ interface VideoRecorderScreenProps {
   onBack?: () => void;
   onVideoSaved?: (uri: string) => void;
   existingVideoUri?: string | null;
+  existingVideoSegments?: string[];
 }
 
 export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
   onBack,
   onVideoSaved,
   existingVideoUri,
+  existingVideoSegments,
 }) => {
   const [facing, setFacing] = useState<CameraType>('back');
   const [permission, requestPermission] = useCameraPermissions();
@@ -47,11 +49,15 @@ export const VideoRecorderScreen: React.FC<VideoRecorderScreenProps> = ({
   // Load existing video segments when editing
   useEffect(() => {
     if (existingVideoUri) {
-      setVideoSegments([existingVideoUri]);
+      // If we have existing segments, use them; otherwise just use the URI
+      const segments = existingVideoSegments && existingVideoSegments.length > 0 
+        ? existingVideoSegments 
+        : [existingVideoUri];
+      setVideoSegments(segments);
       setOriginalVideoUri(existingVideoUri);
       setMode('video');
     }
-  }, [existingVideoUri]);
+  }, [existingVideoUri, existingVideoSegments]);
 
   useEffect(() => {
     // Request media library permission on mount
