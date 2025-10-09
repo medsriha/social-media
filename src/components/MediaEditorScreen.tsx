@@ -335,25 +335,41 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
           )}
 
           {/* Action Buttons */}
-          <View style={styles.actionButtonsRow}>
-            <TouchableOpacity
-              style={[styles.publishButton, isProcessing && styles.buttonDisabled]}
-              onPress={handlePublish}
-              disabled={isProcessing}
-            >
-              <MaterialIcons name="send" size={20} color="#fff" />
-              <Text style={styles.publishButtonText}>
-                {isProcessing ? 'Publishing...' : 'Publish'}
-              </Text>
-            </TouchableOpacity>
+          <View style={styles.actionButtonsContainer}>
+            {/* Save Changes Button - Only show if from gallery */}
+            {isFromGallery && (
+              <TouchableOpacity
+                style={[styles.saveButton, isProcessing && styles.buttonDisabled]}
+                onPress={handleSaveToGallery}
+                disabled={isProcessing}
+              >
+                <MaterialIcons name="save" size={20} color="#fff" />
+                <Text style={styles.saveButtonText}>
+                  {isProcessing ? 'Saving...' : 'Save Changes'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            
+            <View style={styles.actionButtonsRow}>
+              <TouchableOpacity
+                style={[styles.publishButton, isProcessing && styles.buttonDisabled]}
+                onPress={handlePublish}
+                disabled={isProcessing}
+              >
+                <MaterialIcons name="send" size={20} color="#fff" />
+                <Text style={styles.publishButtonText}>
+                  {isProcessing ? 'Publishing...' : 'Publish'}
+                </Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.deleteButtonBottom, isProcessing && styles.buttonDisabled]} 
-              onPress={handleDelete}
-              disabled={isProcessing}
-            >
-              <MaterialIcons name="delete" size={22} color="#fff" />
-            </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.deleteButtonBottom, isProcessing && styles.buttonDisabled]} 
+                onPress={handleDelete}
+                disabled={isProcessing}
+              >
+                <MaterialIcons name="delete" size={22} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
       </View>
@@ -468,11 +484,34 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontStyle: 'italic',
   },
+  actionButtonsContainer: {
+    marginTop: 8,
+    marginBottom: 8,
+    gap: 12,
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#34c759',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+    justifyContent: 'center',
+    elevation: 3,
+    shadowColor: '#34c759',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
   actionButtonsRow: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 8,
-    marginBottom: 8,
     alignItems: 'center',
   },
   publishButton: {
