@@ -17,7 +17,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { MediaEditorScreen } from '../components/MediaEditorScreen';
 import { saveMediaMetadata, loadMediaMetadata } from '../utils/mediaStorage';
-import { deleteMedia as deleteMediaFromBackend } from '../utils/api';
+import { deleteMedia as deleteMediaFromBackend, uploadMedia } from '../utils/api';
 
 const { width } = Dimensions.get('window');
 const ITEM_SIZE = (width - 32) / 3; // 3 columns with minimal spacing
@@ -428,7 +428,7 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
       const metadataFilename = `${data.type}_${timestamp}.json`;
       const metadataUri = `${publicDirectory}${metadataFilename}`;
       
-      const metadata = {
+      const metadata: MediaItem = {
         uri: newUri,
         filename,
         timestamp,
@@ -441,9 +441,38 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
 
       await FileSystem.writeAsStringAsync(metadataUri, JSON.stringify(metadata));
 
+      // Upload to backend server
+      try {
+        console.log('Uploading media to backend...', { uri: editingMedia.uri, type: data.type });
+        const uploadResult = await uploadMedia({
+          fileUri: editingMedia.uri,
+          mediaType: data.type,
+          caption: data.caption,
+          emojis: data.emojis,
+          published: true,
+        });
+        console.log('Media uploaded successfully:', uploadResult);
+
+        // Update local metadata with backend ID
+        metadata.id = uploadResult.id;
+        await FileSystem.writeAsStringAsync(metadataUri, JSON.stringify(metadata));
+      } catch (uploadError) {
+        console.error('⚠️ Upload to backend failed:', uploadError);
+        // Continue even if upload fails - media is still saved locally
+        Alert.alert(
+          'Partial Success',
+          `Media saved locally but upload to server failed. It won't appear in the public feed until you have a stable connection.`,
+          [{ text: 'OK' }]
+        );
+      }
+
       // Optionally save to device's media library
       if (Platform.OS !== 'web') {
-        await MediaLibrary.saveToLibraryAsync(editingMedia.uri);
+        try {
+          await MediaLibrary.saveToLibraryAsync(editingMedia.uri);
+        } catch (mlError) {
+          console.error('Error saving to media library:', mlError);
+        }
       }
 
       Alert.alert('Success', `${data.type === 'photo' ? 'Photo' : 'Video'} is now public!`);

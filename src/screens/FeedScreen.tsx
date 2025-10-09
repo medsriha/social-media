@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,11 +10,14 @@ import {
   ActivityIndicator,
   Image,
   Alert,
+  TouchableWithoutFeedback,
+  Animated,
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { getAllMedia, API_BASE_URL, MediaPost } from '../utils/api';
 
 const { height, width } = Dimensions.get('window');
@@ -52,6 +55,11 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [likedItems, setLikedItems] = useState<Set<number | string>>(new Set());
+  const [mutedVideos, setMutedVideos] = useState<Set<number | string>>(new Set());
+  const lastTapRef = useRef<number>(0);
+  const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const doubleTapDelay = 300; // milliseconds
 
   const loadPublicMedia = useCallback(async () => {
     try {
@@ -98,6 +106,15 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
     loadPublicMedia();
   }, [loadPublicMedia]);
 
+  useEffect(() => {
+    // Cleanup timer on unmount
+    return () => {
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+      }
+    };
+  }, []);
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadPublicMedia();
@@ -116,58 +133,163 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
     return `${days}d ago`;
   };
 
-  const renderMediaItem = ({ item, index }: { item: MediaItem; index: number }) => (
+  const toggleMute = useCallback((itemId: number | string | undefined) => {
+    if (!itemId) return;
+    
+    setMutedVideos((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId);
+      } else {
+        newSet.add(itemId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const handleLike = useCallback((itemId: number | string | undefined) => {
+    if (!itemId) return;
+    
+    setLikedItems((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId);
+      } else {
+        newSet.add(itemId);
+        // Trigger haptic feedback for like
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const handleTap = useCallback((itemId: number | string | undefined, itemType: 'photo' | 'video') => {
+    if (!itemId) return;
+    
+    // Trigger haptic feedback on every tap
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    // Clear any existing single tap timer
+    if (singleTapTimerRef.current) {
+      clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = null;
+    }
+    
+    const now = Date.now();
+    const timeSinceLastTap = now - lastTapRef.current;
+    
+    if (timeSinceLastTap < doubleTapDelay) {
+      // Double tap detected - trigger like and stronger vibration
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setLikedItems((prev) => {
+        const newSet = new Set(prev);
+        if (!newSet.has(itemId)) {
+          newSet.add(itemId);
+        }
+        return newSet;
+      });
+      lastTapRef.current = 0; // Reset
+    } else {
+      // Potential single tap - wait to see if another tap comes
+      lastTapRef.current = now;
+      
+      // Only toggle mute for videos, not photos
+      if (itemType === 'video') {
+        singleTapTimerRef.current = setTimeout(() => {
+          toggleMute(itemId);
+          singleTapTimerRef.current = null;
+        }, doubleTapDelay);
+      }
+    }
+  }, [doubleTapDelay, toggleMute]);
+
+  const renderMediaItem = ({ item, index }: { item: MediaItem; index: number }) => {
+    const isLiked = item.id ? likedItems.has(item.id) : false;
+    const isMuted = item.id ? mutedVideos.has(item.id) : true; // Videos start muted by default
+    
+    return (
     <View style={styles.videoContainer}>
-      {item.type === 'video' ? (
-        <Video
-          source={{ uri: item.uri }}
-          style={styles.video}
-          resizeMode={ResizeMode.COVER}
-          shouldPlay={index === currentIndex}
-          isLooping
-          useNativeControls={false}
-        />
-      ) : (
-        <Image
-          source={{ uri: item.uri }}
-          style={styles.video}
-          resizeMode="cover"
-        />
-      )}
-      
-      {/* Emoji Overlays */}
-      {item.emojis.map((emoji) => (
-        <View
-          key={emoji.id}
-          style={[
-            styles.feedEmojiOverlay,
-            {
-              left: `${emoji.x * 100}%`,
-              top: `${emoji.y * 100}%`,
-              transform: [{ scale: emoji.scale }],
-            },
-          ]}
-        >
-          <Text style={styles.feedEmojiText}>{emoji.emoji}</Text>
+      <TouchableWithoutFeedback onPress={() => handleTap(item.id, item.type)}>
+        <View style={styles.mediaWrapper}>
+          {item.type === 'video' ? (
+            <Video
+              source={{ uri: item.uri }}
+              style={styles.video}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay={index === currentIndex}
+              isLooping
+              useNativeControls={false}
+              isMuted={isMuted}
+              usePoster={false}
+              onError={(error) => {
+                console.error('Video error:', error);
+                console.error('Video URI:', item.uri);
+              }}
+              onLoad={() => {
+                console.log('Video loaded successfully:', item.uri);
+              }}
+            />
+          ) : (
+            <Image
+              source={{ uri: item.uri }}
+              style={styles.video}
+              resizeMode="cover"
+            />
+          )}
+          
+          {/* Emoji Overlays */}
+          {item.emojis.map((emoji) => (
+            <View
+              key={emoji.id}
+              style={[
+                styles.feedEmojiOverlay,
+                {
+                  left: `${emoji.x * 100}%`,
+                  top: `${emoji.y * 100}%`,
+                  transform: [{ scale: emoji.scale }],
+                },
+              ]}
+            >
+              <Text style={styles.feedEmojiText}>{emoji.emoji}</Text>
+            </View>
+          ))}
+          
+          {/* Mute/Unmute Indicator for Videos */}
+          {item.type === 'video' && (
+            <View style={styles.muteIndicator}>
+              <MaterialIcons 
+                name={isMuted ? "volume-off" : "volume-up"} 
+                size={24} 
+                color="rgba(255,255,255,0.8)" 
+              />
+            </View>
+          )}
+          
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.8)']}
+            style={styles.gradient}
+          >
+            <View style={styles.videoInfo}>
+              {item.caption ? (
+                <Text style={styles.caption}>{item.caption}</Text>
+              ) : null}
+              <Text style={styles.timeAgo}>{formatTimeAgo(item.timestamp)}</Text>
+            </View>
+          </LinearGradient>
         </View>
-      ))}
-      
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.8)']}
-        style={styles.gradient}
-      >
-        <View style={styles.videoInfo}>
-          {item.caption ? (
-            <Text style={styles.caption}>{item.caption}</Text>
-          ) : null}
-          <Text style={styles.timeAgo}>{formatTimeAgo(item.timestamp)}</Text>
-        </View>
-      </LinearGradient>
+      </TouchableWithoutFeedback>
 
       {/* Right side action buttons */}
       <View style={styles.rightActions}>
-        <TouchableOpacity style={styles.actionButton}>
-          <MaterialIcons name="favorite-border" size={32} color="#fff" />
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => handleLike(item.id)}
+        >
+          <MaterialIcons 
+            name={isLiked ? "favorite" : "favorite-border"} 
+            size={32} 
+            color={isLiked ? "#ff0050" : "#fff"} 
+          />
           <Text style={styles.actionText}>Like</Text>
         </TouchableOpacity>
         
@@ -183,6 +305,7 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
       </View>
     </View>
   );
+};
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
@@ -301,6 +424,10 @@ const styles = StyleSheet.create({
     height,
     backgroundColor: '#000',
   },
+  mediaWrapper: {
+    width: '100%',
+    height: '100%',
+  },
   video: {
     width: '100%',
     height: '100%',
@@ -335,6 +462,15 @@ const styles = StyleSheet.create({
   },
   feedEmojiText: {
     fontSize: 40,
+  },
+  muteIndicator: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    padding: 8,
+    zIndex: 5,
   },
   rightActions: {
     position: 'absolute',
