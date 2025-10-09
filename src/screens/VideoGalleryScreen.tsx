@@ -16,7 +16,8 @@ import * as MediaLibrary from 'expo-media-library';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { MediaEditorScreen } from '../components/MediaEditorScreen';
-import { saveMediaMetadata } from '../utils/mediaStorage';
+import { saveMediaMetadata, loadMediaMetadata } from '../utils/mediaStorage';
+import { deleteMedia as deleteMediaFromBackend } from '../utils/api';
 
 const { width } = Dimensions.get('window');
 const ITEM_SIZE = (width - 32) / 3; // 3 columns with minimal spacing
@@ -30,6 +31,7 @@ interface EmojiOverlay {
 }
 
 interface MediaItem {
+  id?: number; // Backend database ID (only for published media)
   uri: string;
   filename: string;
   timestamp: number;
@@ -206,8 +208,8 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
       : `Delete ${media.type === 'video' ? 'Video' : 'Photo'}`;
     
     const message = media.published
-      ? `This ${media.type} is public and visible to everyone. Deleting it will permanently remove it. Are you sure you want to continue?`
-      : `Are you sure you want to delete this ${media.type}?`;
+      ? `This ${media.type} is public and visible to everyone. Deleting it will remove it permanently. Are you sure you want to continue?`
+      : `Are you sure you want to delete this ${media.type} from your device?`;
     
     Alert.alert(
       title,
@@ -222,7 +224,31 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
           style: 'destructive',
           onPress: async () => {
             try {
-              // Delete the media file
+              // If published, try to delete from backend database
+              if (media.published) {
+                try {
+                  // Load metadata to get backend ID
+                  const metadata = await loadMediaMetadata(media.uri);
+                  
+                  if (metadata && metadata.id) {
+                    // Delete from backend database
+                    console.log('🗑️ Deleting from backend, ID:', metadata.id);
+                    await deleteMediaFromBackend(metadata.id);
+                    console.log('✅ Deleted from backend database');
+                  } else {
+                    console.log('⚠️ No backend ID found, skipping backend deletion');
+                  }
+                } catch (backendError) {
+                  console.error('Error deleting from backend:', backendError);
+                  // Continue with local deletion even if backend fails
+                  Alert.alert(
+                    'Warning',
+                    'Could not delete from server, but will delete locally. The media may still appear in others\' feeds.'
+                  );
+                }
+              }
+              
+              // Delete the local media file
               await FileSystem.deleteAsync(media.uri);
               
               // Try to delete metadata file if it exists
@@ -243,6 +269,8 @@ export const VideoGalleryScreen: React.FC<VideoGalleryScreenProps> = ({
               if (selectedMedia?.uri === media.uri) {
                 setSelectedMedia(null);
               }
+              
+              Alert.alert('Success', `${media.type === 'video' ? 'Video' : 'Photo'} deleted successfully`);
             } catch (error) {
               console.error(`Error deleting ${media.type}:`, error);
               Alert.alert('Error', `Failed to delete ${media.type}`);
