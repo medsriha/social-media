@@ -34,3 +34,8 @@ export const FONT_SIZES = {
 
 export const API_BASE_URL = 'https://api.example.com';
 
+export const MAX_LENGTH = {
+  postCaption: 400,
+  comment: 1000
+};
+

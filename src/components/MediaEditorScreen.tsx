@@ -18,6 +18,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
+import { MAX_LENGTH } from '../utils/constants';
 
 interface EmojiOverlay {
   id: string;
@@ -289,11 +290,11 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
               value={caption}
               onChangeText={setCaption}
               multiline
-              maxLength={150}
+              maxLength={MAX_LENGTH.postCaption}
               returnKeyType="done"
               blurOnSubmit={true}
             />
-            <Text style={styles.characterCount}>{caption.length}/150</Text>
+            <Text style={styles.characterCount}>{caption.length}/{MAX_LENGTH.postCaption}</Text>
           </View>
 
           {/* Emoji Picker Toggle */}
