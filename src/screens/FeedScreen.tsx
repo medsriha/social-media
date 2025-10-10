@@ -273,7 +273,6 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
               {item.caption ? (
                 <Text style={styles.caption}>{item.caption}</Text>
               ) : null}
-              <Text style={styles.timeAgo}>{formatTimeAgo(item.timestamp)}</Text>
             </View>
           </LinearGradient>
         </View>
