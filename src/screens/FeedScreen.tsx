@@ -57,6 +57,7 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [likedItems, setLikedItems] = useState<Set<number | string>>(new Set());
   const [mutedVideos, setMutedVideos] = useState<Set<number | string>>(new Set());
+  const [expandedCaptions, setExpandedCaptions] = useState<Set<number | string>>(new Set());
   const lastTapRef = useRef<number>(0);
   const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   const doubleTapDelay = 300; // milliseconds
@@ -133,6 +134,25 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
     return `${days}d ago`;
   };
 
+  const truncateCaption = (caption: string, maxLength: number = 100) => {
+    if (caption.length <= maxLength) return caption;
+    return caption.substring(0, maxLength) + '...';
+  };
+
+  const toggleCaptionExpansion = useCallback((itemId: number | string | undefined) => {
+    if (!itemId) return;
+    
+    setExpandedCaptions((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId);
+      } else {
+        newSet.add(itemId);
+      }
+      return newSet;
+    });
+  }, []);
+
   const toggleMute = useCallback((itemId: number | string | undefined) => {
     if (!itemId) return;
     
@@ -206,6 +226,7 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
   const renderMediaItem = ({ item, index }: { item: MediaItem; index: number }) => {
     const isLiked = item.id ? likedItems.has(item.id) : false;
     const isMuted = item.id ? mutedVideos.has(item.id) : true; // Videos start muted by default
+    const isCaptionExpanded = item.id ? expandedCaptions.has(item.id) : false;
     
     return (
     <View style={styles.videoContainer}>
@@ -271,7 +292,11 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
           >
             <View style={styles.videoInfo}>
               {item.caption ? (
-                <Text style={styles.caption}>{item.caption}</Text>
+                <TouchableOpacity onPress={() => toggleCaptionExpansion(item.id)}>
+                  <Text style={styles.caption}>
+                    {isCaptionExpanded ? item.caption : truncateCaption(item.caption)}
+                  </Text>
+                </TouchableOpacity>
               ) : null}
             </View>
           </LinearGradient>
@@ -445,10 +470,10 @@ const styles = StyleSheet.create({
   },
   caption: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '400',
     marginBottom: 8,
-    lineHeight: 22,
+    lineHeight: 20,
   },
   timeAgo: {
     color: 'rgba(255,255,255,0.8)',

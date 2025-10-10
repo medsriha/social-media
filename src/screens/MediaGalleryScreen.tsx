@@ -551,6 +551,11 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
   };
 
+  const truncateCaption = (caption: string, maxLength: number = 100) => {
+    if (caption.length <= maxLength) return caption;
+    return caption.substring(0, maxLength) + '...';
+  };
+
   const renderMediaItem = ({ item, index }: { item: MediaItem; index: number }) => {
     const itemKey = `${item.filename}-${item.timestamp}`;
     const isInDeleteMode = deleteMode === itemKey;
@@ -783,22 +788,11 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
         {/* Caption - TikTok style */}
         {selectedMedia.caption && (
           <View style={styles.captionContainer}>
-            <Text 
-              style={styles.captionText}
-              numberOfLines={isCaptionExpanded ? undefined : 2}
-            >
-              {selectedMedia.caption}
-            </Text>
-            {selectedMedia.caption.length > 80 && (
-              <TouchableOpacity 
-                onPress={() => setIsCaptionExpanded(!isCaptionExpanded)}
-                style={styles.moreButton}
-              >
-                <Text style={styles.moreButtonText}>
-                  {isCaptionExpanded ? 'less' : 'more'}
-                </Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity onPress={() => setIsCaptionExpanded(!isCaptionExpanded)}>
+              <Text style={styles.captionText}>
+                {isCaptionExpanded ? selectedMedia.caption : truncateCaption(selectedMedia.caption)}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
 
