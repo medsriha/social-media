@@ -49,6 +49,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
   const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [userName] = useState('You'); // In a real app, this would come from auth
+  const [editingCommentId, setEditingCommentId] = useState<number|null>(null);
 
   // Animations
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -330,6 +331,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
                     currentUser={userName}
                     onReply={handleReply}
                     onCommentUpdate={() => loadComments(false)}
+                    onEditActive={setEditingCommentId}
                   />
                 ))}
                 <View style={styles.bottomSpacing} />
@@ -356,56 +358,58 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
           )}
 
           {/* Comment Input */}
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          >
-            <Animated.View 
-              style={[
-                styles.inputContainer,
-                { transform: [{ scale: inputScale }] }
-              ]}
+          {editingCommentId === null && (
+            <KeyboardAvoidingView 
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             >
-              <LinearGradient
-                colors={['rgba(20,20,20,0.95)', 'rgba(30,30,30,0.95)']}
-                style={styles.inputGradient}
+              <Animated.View 
+                style={[
+                  styles.inputContainer,
+                  { transform: [{ scale: inputScale }] }
+                ]}
               >
-                <View style={styles.inputWrapper}>
-                  <TextInput
-                    ref={inputRef}
-                    style={styles.textInput}
-                    placeholder={replyingTo ? "Write a reply..." : "Add a comment..."}
-                    placeholderTextColor="#888"
-                    value={commentText}
-                    onChangeText={setCommentText}
-                    multiline
-                    maxLength={500}
-                    returnKeyType="send"
-                    onSubmitEditing={handleSubmitComment}
-                    blurOnSubmit={false}
-                  />
-                  
-                  {commentText.trim() && (
-                    <TouchableOpacity 
-                      style={styles.sendButton}
-                      onPress={handleSubmitComment}
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <LinearGradient
-                          colors={['#ff0050', '#ff7a00']}
-                          style={styles.sendButtonGradient}
-                        >
-                          <MaterialIcons name="send" size={20} color="#fff" />
-                        </LinearGradient>
-                      )}
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </LinearGradient>
-            </Animated.View>
-          </KeyboardAvoidingView>
+                <LinearGradient
+                  colors={['rgba(20,20,20,0.95)', 'rgba(30,30,30,0.95)']}
+                  style={styles.inputGradient}
+                >
+                  <View style={styles.inputWrapper}>
+                    <TextInput
+                      ref={inputRef}
+                      style={styles.textInput}
+                      placeholder={replyingTo ? "Write a reply..." : "Add a comment..."}
+                      placeholderTextColor="#888"
+                      value={commentText}
+                      onChangeText={setCommentText}
+                      multiline
+                      maxLength={500}
+                      returnKeyType="send"
+                      onSubmitEditing={handleSubmitComment}
+                      blurOnSubmit={false}
+                    />
+                    
+                    {commentText.trim() && (
+                      <TouchableOpacity 
+                        style={styles.sendButton}
+                        onPress={handleSubmitComment}
+                        disabled={isSubmitting}
+                      >
+                        {isSubmitting ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <LinearGradient
+                            colors={['#ff0050', '#ff7a00']}
+                            style={styles.sendButtonGradient}
+                          >
+                            <MaterialIcons name="send" size={20} color="#fff" />
+                          </LinearGradient>
+                        )}
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </LinearGradient>
+              </Animated.View>
+            </KeyboardAvoidingView>
+          )}
         </Animated.View>
       </PanGestureHandler>
     </View>

@@ -7,6 +7,11 @@ import {
   Animated,
   Alert,
   Pressable,
+  TextInput,
+  ActionSheetIOS,
+  Platform,
+  Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +22,7 @@ import {
   likeComment,
   unlikeComment,
   deleteComment,
+  updateComment,
 } from '../utils/api';
 
 interface CommentItemProps {
@@ -25,6 +31,7 @@ interface CommentItemProps {
   onReply: (comment: Comment) => void;
   onCommentUpdate: () => void;
   isReply?: boolean;
+  onEditActive?: (id: number | null) => void;
 }
 
 export const CommentItem: React.FC<CommentItemProps> = ({
@@ -33,6 +40,7 @@ export const CommentItem: React.FC<CommentItemProps> = ({
   onReply,
   onCommentUpdate,
   isReply = false,
+  onEditActive,
 }) => {
   // State
   const [isLiked, setIsLiked] = useState(() => {
@@ -41,6 +49,10 @@ export const CommentItem: React.FC<CommentItemProps> = ({
   const [likesCount, setLikesCount] = useState(comment.likes_count);
   const [showReplies, setShowReplies] = useState(true);
   const [isLiking, setIsLiking] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editContent, setEditContent] = useState(comment.content);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
 
   // Animations
   const likeScale = useRef(new Animated.Value(1)).current;
@@ -187,6 +199,50 @@ export const CommentItem: React.FC<CommentItemProps> = ({
     );
   }, [comment.id, itemOpacity, onCommentUpdate]);
 
+  const handleEdit = useCallback(() => {
+    setEditMode(true);
+    setEditContent(comment.content);
+    if (onEditActive) onEditActive(comment.id);
+  }, [comment.content, comment.id, onEditActive]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditMode(false);
+    setEditContent(comment.content);
+    if (onEditActive) onEditActive(null);
+  }, [comment.content, onEditActive]);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!editContent.trim()) return;
+    setIsSavingEdit(true);
+    try {
+      await updateComment(comment.id, { content: editContent.trim() });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setEditMode(false);
+      if (onEditActive) onEditActive(null);
+      onCommentUpdate();
+    } catch (error) {
+      console.error('Failed to update comment', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  }, [editContent, comment.id, onCommentUpdate, onEditActive]);
+
+  const handleMoreOptions = useCallback(() => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions({
+        options: ['Cancel', 'Edit', 'Delete'],
+        destructiveButtonIndex: 2,
+        cancelButtonIndex: 0
+      }, (buttonIndex) => {
+        if (buttonIndex === 1) handleEdit();
+        else if (buttonIndex === 2) handleDelete();
+      });
+    } else {
+      setMenuVisible(true);
+    }
+  }, [handleEdit, handleDelete]);
+
   const isOwnComment = comment.author_name === currentUser;
 
   return (
@@ -224,16 +280,36 @@ export const CommentItem: React.FC<CommentItemProps> = ({
           </View>
           
           {isOwnComment && (
-            <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
+            <TouchableOpacity onPress={handleMoreOptions} style={styles.deleteButton}>
               <MaterialIcons name="more-horiz" size={16} color="#888" />
             </TouchableOpacity>
           )}
         </View>
 
         {/* Comment Text */}
-        <Pressable>
-          <Text style={styles.commentText}>{comment.content}</Text>
-        </Pressable>
+        {editMode ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TextInput
+              style={[styles.commentText, { backgroundColor: 'rgba(255,255,255,0.05)', color: '#fff', flex: 1, borderRadius: 8, paddingHorizontal: 8 }]}
+              value={editContent}
+              onChangeText={setEditContent}
+              autoFocus
+              editable={!isSavingEdit}
+              maxLength={500}
+              multiline
+            />
+            <TouchableOpacity onPress={handleSaveEdit} disabled={isSavingEdit || editContent.trim() === comment.content.trim()} style={{ padding: 4 }}>
+              <MaterialIcons name="check" size={20} color={isSavingEdit || editContent.trim() === comment.content.trim() ? "#888" : "#ff7a00"} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleCancelEdit} disabled={isSavingEdit} style={{ padding: 4 }}>
+              <MaterialIcons name="close" size={20} color="#888" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Pressable>
+            <Text style={styles.commentText}>{comment.content}</Text>
+          </Pressable>
+        )}
 
         {/* Actions */}
         <View style={styles.actions}>
@@ -320,11 +396,33 @@ export const CommentItem: React.FC<CommentItemProps> = ({
                 onReply={onReply}
                 onCommentUpdate={onCommentUpdate}
                 isReply={true}
+                onEditActive={onEditActive}
               />
             ))}
           </Animated.View>
         )}
       </View>
+      {/* Edit/delete menu/modal for Android/other */}
+      {isOwnComment && Platform.OS !== 'ios' && (
+        <Modal
+          transparent
+          animationType="fade"
+          visible={menuVisible}
+          onRequestClose={() => setMenuVisible(false)}
+        >
+          <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
+            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.37)' }} />
+          </TouchableWithoutFeedback>
+          <View style={{ position: 'absolute', right: 30, top: 60, backgroundColor: '#222', borderRadius: 10, padding: 16, zIndex: 1000 }}>
+            <TouchableOpacity onPress={() => { setMenuVisible(false); handleEdit(); }} style={{ paddingVertical: 8 }}>
+              <Text style={{ color: '#fff', fontSize: 15 }}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { setMenuVisible(false); handleDelete(); }} style={{ paddingVertical: 8 }}>
+              <Text style={{ color: '#ff0050', fontSize: 15, fontWeight: 'bold' }}>Delete</Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
+      )}
     </Animated.View>
   );
 };
