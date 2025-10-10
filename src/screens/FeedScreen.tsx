@@ -18,7 +18,9 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { getAllMedia, API_BASE_URL, MediaPost } from '../utils/api';
+import { getAllMedia, API_BASE_URL, MediaPost, getMediaComments, CommentWithReplies } from '../utils/api';
+import { CommentsSection } from '../components/CommentsSection';
+import { CommentPreview } from '../components/CommentPreview';
 
 const { height, width } = Dimensions.get('window');
 
@@ -58,6 +60,10 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
   const [likedItems, setLikedItems] = useState<Set<number | string>>(new Set());
   const [mutedVideos, setMutedVideos] = useState<Set<number | string>>(new Set());
   const [expandedCaptions, setExpandedCaptions] = useState<Set<number | string>>(new Set());
+  const [commentCounts, setCommentCounts] = useState<Map<number, number>>(new Map());
+  const [showCommentsFor, setShowCommentsFor] = useState<number | null>(null);
+  const [commentPreviews, setCommentPreviews] = useState<Map<number, CommentWithReplies[]>>(new Map());
+  const [showPreviewFor, setShowPreviewFor] = useState<number | null>(null);
   const lastTapRef = useRef<number>(0);
   const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   const doubleTapDelay = 300; // milliseconds
@@ -89,6 +95,9 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
       });
 
       setMediaItems(transformedMedia);
+      
+      // Load comment counts for each media
+      await loadCommentCounts(transformedMedia);
     } catch (error) {
       console.error('Error loading public media from backend:', error);
       Alert.alert(
@@ -102,6 +111,38 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
       setRefreshing(false);
     }
   }, []);
+
+  const loadCommentCounts = async (mediaItems: MediaItem[]) => {
+    try {
+      const counts = new Map<number, number>();
+      const previews = new Map<number, CommentWithReplies[]>();
+      
+      // Load comment counts for each media item
+      await Promise.all(
+        mediaItems.map(async (item) => {
+          if (item.id) {
+            try {
+              const comments = await getMediaComments(item.id, 0, 1000); // Get all to count
+              const totalCount = comments.reduce((total, comment) => {
+                return total + 1 + (comment.replies?.length || 0);
+              }, 0);
+              counts.set(item.id, totalCount);
+              previews.set(item.id, comments.slice(0, 3)); // Store first 3 comments for preview
+            } catch (error) {
+              console.error(`Error loading comments for media ${item.id}:`, error);
+              counts.set(item.id, 0);
+              previews.set(item.id, []);
+            }
+          }
+        })
+      );
+      
+      setCommentCounts(counts);
+      setCommentPreviews(previews);
+    } catch (error) {
+      console.error('Error loading comment counts:', error);
+    }
+  };
 
   useEffect(() => {
     loadPublicMedia();
@@ -183,8 +224,27 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
     });
   }, []);
 
+  const handleOpenComments = useCallback((mediaId: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowCommentsFor(mediaId);
+  }, []);
+
+  const handleCloseComments = useCallback(() => {
+    setShowCommentsFor(null);
+    // Reload comment counts when comments modal is closed
+    if (mediaItems.length > 0) {
+      loadCommentCounts(mediaItems);
+    }
+  }, [mediaItems]);
+
   const handleTap = useCallback((itemId: number | string | undefined, itemType: 'photo' | 'video') => {
     if (!itemId) return;
+    
+    // Hide comment preview if showing
+    if (showPreviewFor) {
+      setShowPreviewFor(null);
+      return;
+    }
     
     // Trigger haptic feedback on every tap
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -221,12 +281,13 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
         }, doubleTapDelay);
       }
     }
-  }, [doubleTapDelay, toggleMute]);
+  }, [doubleTapDelay, toggleMute, showPreviewFor]);
 
   const renderMediaItem = ({ item, index }: { item: MediaItem; index: number }) => {
     const isLiked = item.id ? likedItems.has(item.id) : false;
     const isMuted = item.id ? mutedVideos.has(item.id) : true; // Videos start muted by default
     const isCaptionExpanded = item.id ? expandedCaptions.has(item.id) : false;
+    const commentCount = item.id ? commentCounts.get(item.id) || 0 : 0;
     
     return (
     <View style={styles.videoContainer}>
@@ -275,6 +336,36 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
             </View>
           ))}
           
+          {/* Floating Comment Count (if there are comments) */}
+          {commentCount > 0 && (
+            <TouchableOpacity 
+              style={styles.floatingCommentButton}
+              onPress={() => item.id && handleOpenComments(item.id)}
+              onLongPress={() => item.id && setShowPreviewFor(item.id)}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={['rgba(0,0,0,0.7)', 'rgba(0,0,0,0.5)']}
+                style={styles.floatingCommentGradient}
+              >
+                <MaterialIcons name="comment" size={16} color="#fff" />
+                <Text style={styles.floatingCommentText}>{commentCount}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+          
+          {/* Comment Preview */}
+          {item.id && showPreviewFor === item.id && (
+            <CommentPreview
+              comments={commentPreviews.get(item.id) || []}
+              isVisible={showPreviewFor === item.id}
+              onPress={() => {
+                setShowPreviewFor(null);
+                handleOpenComments(item.id!);
+              }}
+            />
+          )}
+          
           {/* Mute/Unmute Indicator for Videos */}
           {item.type === 'video' && (
             <View style={styles.muteIndicator}>
@@ -317,9 +408,12 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
           <Text style={styles.actionText}>Like</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => item.id && handleOpenComments(item.id)}
+        >
           <MaterialIcons name="comment" size={32} color="#fff" />
-          <Text style={styles.actionText}>Comment</Text>
+          <Text style={styles.actionText}>{commentCount || 'Comment'}</Text>
         </TouchableOpacity>
         
         <TouchableOpacity style={styles.actionButton}>
@@ -382,6 +476,15 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
               tintColor="#fff"
             />
           }
+        />
+      )}
+
+      {/* Comments Modal */}
+      {showCommentsFor && (
+        <CommentsSection
+          mediaId={showCommentsFor}
+          isVisible={showCommentsFor !== null}
+          onClose={handleCloseComments}
         />
       )}
 
@@ -597,6 +700,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.3,
+  },
+  floatingCommentButton: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    borderRadius: 20,
+    overflow: 'hidden',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  floatingCommentGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  floatingCommentText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 
