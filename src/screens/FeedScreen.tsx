@@ -336,24 +336,6 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
             </View>
           ))}
           
-          {/* Floating Comment Count (if there are comments) */}
-          {commentCount > 0 && (
-            <TouchableOpacity 
-              style={styles.floatingCommentButton}
-              onPress={() => item.id && handleOpenComments(item.id)}
-              onLongPress={() => item.id && setShowPreviewFor(item.id)}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={['rgba(0,0,0,0.7)', 'rgba(0,0,0,0.5)']}
-                style={styles.floatingCommentGradient}
-              >
-                <MaterialIcons name="comment" size={16} color="#fff" />
-                <Text style={styles.floatingCommentText}>{commentCount}</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
-          
           {/* Comment Preview */}
           {item.id && showPreviewFor === item.id && (
             <CommentPreview
