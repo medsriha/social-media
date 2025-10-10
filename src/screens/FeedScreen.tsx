@@ -494,7 +494,6 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
             style={styles.createButtonGradient}
           >
             <MaterialIcons name="videocam" size={16} color="#fff" />
-            <Text style={styles.createButtonText}>Create</Text>
           </LinearGradient>
         </TouchableOpacity>
         
