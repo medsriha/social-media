@@ -1,10 +1,10 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Request
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session, relationship
 from typing import List, Optional
 import os
 import json
@@ -35,6 +35,44 @@ class MediaPost(Base):
     timestamp = Column(Integer)
     published = Column(Boolean, default=True)
     file_path = Column(String)
+    
+    # Relationship to comments
+    comments = relationship("Comment", back_populates="media_post", cascade="all, delete-orphan")
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Foreign keys
+    media_post_id = Column(Integer, ForeignKey("media_posts.id"), nullable=False)
+    parent_comment_id = Column(Integer, ForeignKey("comments.id"), nullable=True)
+    
+    # User information (simplified - in a real app you'd have a User model)
+    author_name = Column(String, nullable=False, default="Anonymous")
+    
+    # Relationships
+    media_post = relationship("MediaPost", back_populates="comments")
+    parent_comment = relationship("Comment", remote_side=[id], backref="replies")
+    likes = relationship("CommentLike", back_populates="comment", cascade="all, delete-orphan")
+
+class CommentLike(Base):
+    __tablename__ = "comment_likes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Foreign keys
+    comment_id = Column(Integer, ForeignKey("comments.id"), nullable=False)
+    
+    # User information (simplified - in a real app you'd have a User model)
+    user_name = Column(String, nullable=False, default="Anonymous")
+    
+    # Relationships
+    comment = relationship("Comment", back_populates="likes")
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -58,6 +96,57 @@ class MediaPostCreate(BaseModel):
     caption: Optional[str] = ""
     emojis: Optional[str] = "[]"
     published: bool = True
+
+# Comment Pydantic models
+class CommentCreate(BaseModel):
+    content: str
+    author_name: str = "Anonymous"
+    parent_comment_id: Optional[int] = None
+
+class CommentUpdate(BaseModel):
+    content: str
+
+class CommentLikeResponse(BaseModel):
+    id: int
+    user_name: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class CommentResponse(BaseModel):
+    id: int
+    content: str
+    author_name: str
+    created_at: datetime
+    updated_at: datetime
+    media_post_id: int
+    parent_comment_id: Optional[int]
+    likes_count: int
+    replies_count: int
+    likes: List[CommentLikeResponse] = []
+
+    class Config:
+        from_attributes = True
+
+class CommentWithRepliesResponse(BaseModel):
+    id: int
+    content: str
+    author_name: str
+    created_at: datetime
+    updated_at: datetime
+    media_post_id: int
+    parent_comment_id: Optional[int]
+    likes_count: int
+    replies_count: int
+    likes: List[CommentLikeResponse] = []
+    replies: List["CommentResponse"] = []
+
+    class Config:
+        from_attributes = True
+
+class CommentLikeCreate(BaseModel):
+    user_name: str = "Anonymous"
 
 # FastAPI app
 app = FastAPI(title="Social Media API", version="1.0.0")
@@ -303,6 +392,214 @@ async def delete_media(media_id: int):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
+
+# Helper function to build comment response with counts
+def build_comment_response(comment: Comment, db: Session) -> CommentResponse:
+    likes_count = db.query(CommentLike).filter(CommentLike.comment_id == comment.id).count()
+    replies_count = db.query(Comment).filter(Comment.parent_comment_id == comment.id).count()
+    likes = db.query(CommentLike).filter(CommentLike.comment_id == comment.id).all()
+    
+    return CommentResponse(
+        id=comment.id,
+        content=comment.content,
+        author_name=comment.author_name,
+        created_at=comment.created_at,
+        updated_at=comment.updated_at,
+        media_post_id=comment.media_post_id,
+        parent_comment_id=comment.parent_comment_id,
+        likes_count=likes_count,
+        replies_count=replies_count,
+        likes=[CommentLikeResponse.model_validate(like) for like in likes]
+    )
+
+# Comment CRUD endpoints
+@app.post("/api/media/{media_id}/comments", response_model=CommentResponse)
+async def create_comment(media_id: int, comment_data: CommentCreate, db: Session = Depends(get_db)):
+    """
+    Create a new comment for a media post
+    """
+    # Verify media post exists
+    media_post = db.query(MediaPost).filter(MediaPost.id == media_id).first()
+    if not media_post:
+        raise HTTPException(status_code=404, detail="Media post not found")
+    
+    # If parent_comment_id is provided, verify it exists and belongs to the same media
+    if comment_data.parent_comment_id:
+        parent_comment = db.query(Comment).filter(
+            Comment.id == comment_data.parent_comment_id,
+            Comment.media_post_id == media_id
+        ).first()
+        if not parent_comment:
+            raise HTTPException(status_code=404, detail="Parent comment not found or doesn't belong to this media")
+    
+    # Create comment
+    comment = Comment(
+        content=comment_data.content,
+        author_name=comment_data.author_name,
+        media_post_id=media_id,
+        parent_comment_id=comment_data.parent_comment_id
+    )
+    
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    
+    return build_comment_response(comment, db)
+
+@app.get("/api/media/{media_id}/comments", response_model=List[CommentWithRepliesResponse])
+async def get_media_comments(media_id: int, skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+    """
+    Get all comments for a media post (only top-level comments with their replies)
+    """
+    # Verify media post exists
+    media_post = db.query(MediaPost).filter(MediaPost.id == media_id).first()
+    if not media_post:
+        raise HTTPException(status_code=404, detail="Media post not found")
+    
+    # Get top-level comments (no parent)
+    top_level_comments = db.query(Comment).filter(
+        Comment.media_post_id == media_id,
+        Comment.parent_comment_id.is_(None)
+    ).order_by(Comment.created_at.desc()).offset(skip).limit(limit).all()
+    
+    result = []
+    for comment in top_level_comments:
+        # Get replies for this comment
+        replies = db.query(Comment).filter(
+            Comment.parent_comment_id == comment.id
+        ).order_by(Comment.created_at.asc()).all()
+        
+        # Build response with reply data
+        likes_count = db.query(CommentLike).filter(CommentLike.comment_id == comment.id).count()
+        replies_count = len(replies)
+        likes = db.query(CommentLike).filter(CommentLike.comment_id == comment.id).all()
+        
+        replies_response = [build_comment_response(reply, db) for reply in replies]
+        
+        comment_response = CommentWithRepliesResponse(
+            id=comment.id,
+            content=comment.content,
+            author_name=comment.author_name,
+            created_at=comment.created_at,
+            updated_at=comment.updated_at,
+            media_post_id=comment.media_post_id,
+            parent_comment_id=comment.parent_comment_id,
+            likes_count=likes_count,
+            replies_count=replies_count,
+            likes=[CommentLikeResponse.model_validate(like) for like in likes],
+            replies=replies_response
+        )
+        
+        result.append(comment_response)
+    
+    return result
+
+@app.get("/api/comments/{comment_id}", response_model=CommentResponse)
+async def get_comment(comment_id: int, db: Session = Depends(get_db)):
+    """
+    Get a specific comment by ID
+    """
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    return build_comment_response(comment, db)
+
+@app.put("/api/comments/{comment_id}", response_model=CommentResponse)
+async def update_comment(comment_id: int, comment_data: CommentUpdate, db: Session = Depends(get_db)):
+    """
+    Update a comment's content
+    """
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    comment.content = comment_data.content
+    comment.updated_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(comment)
+    
+    return build_comment_response(comment, db)
+
+@app.delete("/api/comments/{comment_id}")
+async def delete_comment(comment_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a comment and all its replies
+    """
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    # Delete the comment (cascading will handle replies and likes)
+    db.delete(comment)
+    db.commit()
+    
+    return {"message": "Comment deleted successfully"}
+
+# Comment Like endpoints
+@app.post("/api/comments/{comment_id}/like")
+async def like_comment(comment_id: int, like_data: CommentLikeCreate, db: Session = Depends(get_db)):
+    """
+    Like a comment
+    """
+    # Verify comment exists
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    # Check if user already liked this comment
+    existing_like = db.query(CommentLike).filter(
+        CommentLike.comment_id == comment_id,
+        CommentLike.user_name == like_data.user_name
+    ).first()
+    
+    if existing_like:
+        raise HTTPException(status_code=400, detail="Comment already liked by this user")
+    
+    # Create like
+    like = CommentLike(
+        comment_id=comment_id,
+        user_name=like_data.user_name
+    )
+    
+    db.add(like)
+    db.commit()
+    db.refresh(like)
+    
+    return {"message": "Comment liked successfully", "like_id": like.id}
+
+@app.delete("/api/comments/{comment_id}/like")
+async def unlike_comment(comment_id: int, user_name: str, db: Session = Depends(get_db)):
+    """
+    Unlike a comment
+    """
+    # Find the like
+    like = db.query(CommentLike).filter(
+        CommentLike.comment_id == comment_id,
+        CommentLike.user_name == user_name
+    ).first()
+    
+    if not like:
+        raise HTTPException(status_code=404, detail="Like not found")
+    
+    db.delete(like)
+    db.commit()
+    
+    return {"message": "Comment unliked successfully"}
+
+@app.get("/api/comments/{comment_id}/likes", response_model=List[CommentLikeResponse])
+async def get_comment_likes(comment_id: int, db: Session = Depends(get_db)):
+    """
+    Get all likes for a comment
+    """
+    # Verify comment exists
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    likes = db.query(CommentLike).filter(CommentLike.comment_id == comment_id).all()
+    return [CommentLikeResponse.model_validate(like) for like in likes]
 
 if __name__ == "__main__":
     import uvicorn
