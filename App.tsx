@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { FeedScreen } from './src/screens/FeedScreen';
 import { MediaRecorderScreen } from './src/screens/MediaRecorderScreen';
 import { MediaGalleryScreen } from './src/screens/MediaGalleryScreen';
@@ -71,7 +72,11 @@ export default function App() {
     }
   };
 
-  return <View style={styles.container}>{renderScreen()}</View>;
+  return (
+    <GestureHandlerRootView style={styles.container}>
+      {renderScreen()}
+    </GestureHandlerRootView>
+  );
 }
 
 const styles = StyleSheet.create({
