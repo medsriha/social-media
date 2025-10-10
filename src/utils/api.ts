@@ -39,6 +39,45 @@ export interface UploadMediaParams {
   published?: boolean;
 }
 
+// Comment-related types
+export interface CommentLike {
+  id: number;
+  user_name: string;
+  created_at: string;
+}
+
+export interface Comment {
+  id: number;
+  content: string;
+  author_name: string;
+  created_at: string;
+  updated_at: string;
+  media_post_id: number;
+  parent_comment_id: number | null;
+  likes_count: number;
+  replies_count: number;
+  likes: CommentLike[];
+  replies?: Comment[];
+}
+
+export interface CommentWithReplies extends Comment {
+  replies: Comment[];
+}
+
+export interface CreateCommentParams {
+  content: string;
+  author_name?: string;
+  parent_comment_id?: number | null;
+}
+
+export interface UpdateCommentParams {
+  content: string;
+}
+
+export interface LikeCommentParams {
+  user_name?: string;
+}
+
 /**
  * Upload media file to the backend
  */
@@ -190,5 +229,248 @@ export const checkBackendHealth = async (): Promise<boolean> => {
   } catch (error) {
     console.error('Backend health check failed:', error);
     return false;
+  }
+};
+
+// =============================================================================
+// COMMENT API FUNCTIONS
+// =============================================================================
+
+/**
+ * Create a new comment on a media post
+ */
+export const createComment = async (
+  mediaId: number, 
+  params: CreateCommentParams
+): Promise<Comment> => {
+  try {
+    console.log('💬 Creating comment for media:', mediaId);
+    const response = await fetch(`${API_BASE_URL}/api/media/${mediaId}/comments`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: params.content,
+        author_name: params.author_name || 'Anonymous',
+        parent_comment_id: params.parent_comment_id || null,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to create comment: ${error}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Comment created:', data.id);
+    return data;
+  } catch (error) {
+    console.error('Error creating comment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all comments for a media post
+ */
+export const getMediaComments = async (
+  mediaId: number, 
+  skip: number = 0, 
+  limit: number = 50
+): Promise<CommentWithReplies[]> => {
+  try {
+    console.log('💬 Fetching comments for media:', mediaId);
+    const response = await fetch(
+      `${API_BASE_URL}/api/media/${mediaId}/comments?skip=${skip}&limit=${limit}`,
+      {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to fetch comments: ${error}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Received comments count:', data.length);
+    return data;
+  } catch (error) {
+    console.error('Error fetching comments:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get a specific comment by ID
+ */
+export const getComment = async (commentId: number): Promise<Comment> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/comments/${commentId}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to fetch comment: ${error}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error fetching comment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update a comment's content
+ */
+export const updateComment = async (
+  commentId: number, 
+  params: UpdateCommentParams
+): Promise<Comment> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/comments/${commentId}`, {
+      method: 'PUT',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to update comment: ${error}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error updating comment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a comment
+ */
+export const deleteComment = async (commentId: number): Promise<void> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/comments/${commentId}`, {
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to delete comment: ${error}`);
+    }
+  } catch (error) {
+    console.error('Error deleting comment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Like a comment
+ */
+export const likeComment = async (
+  commentId: number, 
+  params: LikeCommentParams = {}
+): Promise<{ message: string; like_id: number }> => {
+  try {
+    console.log('❤️ Liking comment:', commentId);
+    const response = await fetch(`${API_BASE_URL}/api/comments/${commentId}/like`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_name: params.user_name || 'Anonymous',
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to like comment: ${error}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Comment liked');
+    return data;
+  } catch (error) {
+    console.error('Error liking comment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Unlike a comment
+ */
+export const unlikeComment = async (
+  commentId: number, 
+  userName: string = 'Anonymous'
+): Promise<{ message: string }> => {
+  try {
+    console.log('💔 Unliking comment:', commentId);
+    const response = await fetch(
+      `${API_BASE_URL}/api/comments/${commentId}/like?user_name=${encodeURIComponent(userName)}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to unlike comment: ${error}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Comment unliked');
+    return data;
+  } catch (error) {
+    console.error('Error unliking comment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all likes for a comment
+ */
+export const getCommentLikes = async (commentId: number): Promise<CommentLike[]> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/comments/${commentId}/likes`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to fetch comment likes: ${error}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error fetching comment likes:', error);
+    throw error;
   }
 };
