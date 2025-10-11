@@ -656,8 +656,8 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
         >
           <MaterialIcons name="arrow-back" size={28} color="#fff" />
         </TouchableOpacity>
-        {/* Show mode toggle when not actively recording, or recording indicator when recording */}
-        {!recording.isRecording ? (
+        {/* Show mode toggle when not actively recording */}
+        {!recording.isRecording && (
           <View style={styles.modeToggle}>
             <TouchableOpacity
               style={[styles.modeButton, mode === 'video' && styles.modeButtonActive]}
@@ -671,11 +671,6 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
             >
               <MaterialIcons name="camera-alt" size={20} color={mode === 'photo' ? '#fff' : '#999'} />
             </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.recordingModeIndicator}>
-            <View style={styles.recordingDot} />
-            <Text style={styles.recordingModeText}>Recording</Text>
           </View>
         )}
       </View>
