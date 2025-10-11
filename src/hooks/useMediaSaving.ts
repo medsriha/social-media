@@ -8,7 +8,6 @@ import { uploadMedia } from '../utils/api';
 interface MediaData {
   uri: string;
   caption: string;
-  emojis: any[];
   type: 'photo' | 'video';
   segments?: string[];
 }
@@ -56,7 +55,7 @@ export const useMediaSaving = ({
         fileUri: data.uri,
         mediaType: data.type,
         caption: data.caption,
-        emojis: data.emojis,
+        emojis: [],
         published: true,
       });
 
@@ -92,7 +91,7 @@ export const useMediaSaving = ({
         id: uploadResponse.id,
         type: data.type,
         caption: data.caption,
-        emojis: data.emojis,
+        emojis: [],
         published: true,
         segments: data.segments,
       });
@@ -154,7 +153,7 @@ export const useMediaSaving = ({
         const success = await saveMediaMetadata(originalVideoUri, {
           type: data.type,
           caption: data.caption,
-          emojis: data.emojis,
+          emojis: [],
           published: false,
           segments: data.segments,
         });
@@ -192,7 +191,7 @@ export const useMediaSaving = ({
         await saveMediaMetadata(newUri, {
           type: data.type,
           caption: data.caption,
-          emojis: data.emojis,
+          emojis: [],
           published: false,
           segments: data.segments,
         });

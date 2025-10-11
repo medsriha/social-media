@@ -392,7 +392,6 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
   const handleMakePublicFromGallery = async (data: {
     uri: string;
     caption: string;
-    emojis: any[];
     type: 'photo' | 'video';
     segments?: string[];
   }) => {
@@ -438,7 +437,7 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
         timestamp,
         type: data.type,
         caption: data.caption,
-        emojis: data.emojis,
+        emojis: [],
         published: true,
         segments: data.segments,
       };
@@ -452,7 +451,7 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
           fileUri: editingMedia.uri,
           mediaType: data.type,
           caption: data.caption,
-          emojis: data.emojis,
+          emojis: [],
           published: true,
         });
         console.log('Media uploaded successfully:', uploadResult);
@@ -496,7 +495,6 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
   const handleSaveFromGallery = async (data: {
     uri: string;
     caption: string;
-    emojis: any[];
     type: 'photo' | 'video';
     segments?: string[];
   }) => {
@@ -507,7 +505,7 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
       const success = await saveMediaMetadata(editingMedia.uri, {
         type: data.type,
         caption: data.caption,
-        emojis: data.emojis,
+        emojis: [],
         segments: data.segments,
         published: editingMedia.published || false,
       });
@@ -686,7 +684,6 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
         mediaType={editingMedia.type}
         videoSegments={editingMedia.segments}
         initialCaption={editingMedia.caption}
-        initialEmojis={editingMedia.emojis}
         isFromGallery={true}
         onBack={handleEditorBack}
         onAddSegments={editingMedia.type === 'video' ? handleAddSegments : undefined}

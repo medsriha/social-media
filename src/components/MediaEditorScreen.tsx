@@ -23,41 +23,28 @@ import { FilterSelector } from './FilterSelector';
 import { CustomFilterEditor } from './CustomFilterEditor';
 import { useCameraFilters } from '../hooks/useCameraFilters';
 
-interface EmojiOverlay {
-  id: string;
-  emoji: string;
-  x: number;
-  y: number;
-  scale: number;
-}
-
 interface MediaEditorScreenProps {
   mediaUri: string;
   mediaType: 'photo' | 'video';
   videoSegments?: string[]; // For multi-segment videos
   initialCaption?: string;
-  initialEmojis?: EmojiOverlay[];
   isFromGallery?: boolean;
   onBack: () => void;
   onAddSegments?: () => void; // For videos from gallery - return to camera to add more segments
   onMakePublic: (data: {
     uri: string;
     caption: string;
-    emojis: EmojiOverlay[];
     type: 'photo' | 'video';
     segments?: string[];
   }) => void;
   onSaveToGallery: (data: {
     uri: string;
     caption: string;
-    emojis: EmojiOverlay[];
     type: 'photo' | 'video';
     segments?: string[];
   }) => void;
   onDelete: () => void;
 }
-
-const EMOJI_LIST = ['😀', '😂', '😍', '🥰', '😎', '🤩', '🥳', '😇', '🤔', '😱', '🔥', '💯', '✨', '💖', '👍', '🎉', '🎵', '🎨', '🌟', '⭐', '💫', '🌈', '🦄', '🐶', '🐱', '🍕', '🍔', '🎂', '☕'];
 
 type EditorStep = 'editing' | 'publishing';
 
@@ -66,7 +53,6 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
   mediaType,
   videoSegments,
   initialCaption = '',
-  initialEmojis = [],
   isFromGallery = false,
   onBack,
   onAddSegments,
@@ -79,8 +65,6 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
   
   // Media state
   const [caption, setCaption] = useState(initialCaption);
-  const [emojis, setEmojis] = useState<EmojiOverlay[]>(initialEmojis);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const videoRef = useRef<Video>(null);
@@ -101,21 +85,6 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
       // Loop back to first segment
       setCurrentSegmentIndex(0);
     }
-  };
-
-  const addEmoji = (emoji: string) => {
-    const newEmoji: EmojiOverlay = {
-      id: Date.now().toString(),
-      emoji,
-      x: Math.random() * 0.6 + 0.2, // 20% to 80% of width
-      y: Math.random() * 0.6 + 0.2, // 20% to 80% of height
-      scale: 1,
-    };
-    setEmojis([...emojis, newEmoji]);
-  };
-
-  const removeEmoji = (id: string) => {
-    setEmojis(emojis.filter((e) => e.id !== id));
   };
 
   // Handle filter selection
@@ -245,7 +214,6 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
       onMakePublic({
         uri: finalUri,
         caption: caption.trim(),
-        emojis,
         type: mediaType,
         segments: videoSegments,
       });
@@ -278,7 +246,6 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
       onSaveToGallery({
         uri: finalUri,
         caption: caption.trim(),
-        emojis,
         type: mediaType,
         segments: videoSegments,
       });
@@ -367,9 +334,6 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
     if (filters.showFilters) {
       filters.setShowFilters(false);
     }
-    if (showEmojiPicker) {
-      setShowEmojiPicker(false);
-    }
     
     setCurrentStep('publishing');
   };
@@ -390,7 +354,6 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
       
       <TouchableWithoutFeedback onPress={() => {
         if (filters.showFilters) filters.setShowFilters(false);
-        if (showEmojiPicker) setShowEmojiPicker(false);
       }}>
         <View style={styles.container}>
           {/* Media Preview */}
@@ -443,24 +406,6 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
               )
             )}
             
-            {/* Emoji Overlays */}
-            {emojis.map((emoji) => (
-              <TouchableOpacity
-                key={emoji.id}
-                style={[
-                  styles.emojiOverlay,
-                  {
-                    left: `${emoji.x * 100}%`,
-                    top: `${emoji.y * 100}%`,
-                    transform: [{ scale: emoji.scale }],
-                  },
-                ]}
-                onLongPress={() => removeEmoji(emoji.id)}
-              >
-                <Text style={styles.emojiText}>{emoji.emoji}</Text>
-              </TouchableOpacity>
-            ))}
-            
             {/* Filter selection button */}
             <TouchableOpacity
               style={styles.filterButton}
@@ -497,48 +442,6 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Emoji Picker Toggle */}
-          <TouchableOpacity
-            style={styles.toolButton}
-            onPress={() => {
-              setShowEmojiPicker(!showEmojiPicker);
-            }}
-          >
-            <MaterialIcons name="insert-emoticon" size={24} color="#fff" />
-            <Text style={styles.toolButtonText}>
-              {showEmojiPicker ? 'Hide Emojis' : 'Add Emojis'}
-            </Text>
-            {emojis.length > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{emojis.length}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          {/* Emoji Picker */}
-          {showEmojiPicker && (
-            <>
-              <ScrollView
-                horizontal
-                style={styles.emojiPicker}
-                showsHorizontalScrollIndicator={false}
-              >
-                {EMOJI_LIST.map((emoji, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.emojiButton}
-                    onPress={() => addEmoji(emoji)}
-                  >
-                    <Text style={styles.emoji}>{emoji}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              {emojis.length > 0 && (
-                <Text style={styles.emojiHint}>Long press emoji on screen to remove</Text>
-              )}
-            </>
-          )}
-
           {/* Next Button */}
           <TouchableOpacity
             style={styles.nextButton}
@@ -615,23 +518,6 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
               />
             )
           )}
-          
-          {/* Emoji overlays on thumbnail */}
-          {emojis.map((emoji) => (
-            <View
-              key={emoji.id}
-              style={[
-                styles.thumbnailEmoji,
-                {
-                  left: `${emoji.x * 100}%`,
-                  top: `${emoji.y * 100}%`,
-                  transform: [{ scale: emoji.scale * 0.5 }],
-                },
-              ]}
-            >
-              <Text style={styles.emojiText}>{emoji.emoji}</Text>
-            </View>
-          ))}
         </View>
         
         {/* Publishing Controls */}
@@ -644,7 +530,6 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.stepTitle}>Add Caption & Publish</Text>
             
             {/* Caption Input */}
             <View style={styles.captionContainer}>
@@ -746,13 +631,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  emojiOverlay: {
-    position: 'absolute',
-    padding: 4,
-  },
-  emojiText: {
-    fontSize: 40,
-  },
   bottomContainer: {
     backgroundColor: 'rgba(0,0,0,0.95)',
     borderTopLeftRadius: 20,
@@ -786,41 +664,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'right',
     marginTop: 4,
-  },
-  emojiPickerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginBottom: 12,
-    gap: 8,
-  },
-  emojiPickerButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  emojiPicker: {
-    maxHeight: 70,
-    marginBottom: 8,
-  },
-  emojiButton: {
-    padding: 8,
-    marginRight: 8,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 8,
-  },
-  emoji: {
-    fontSize: 32,
-  },
-  emojiHint: {
-    color: '#999',
-    fontSize: 11,
-    textAlign: 'center',
-    marginBottom: 8,
-    fontStyle: 'italic',
   },
   actionButtonsContainer: {
     marginTop: 8,
@@ -1017,9 +860,6 @@ const styles = StyleSheet.create({
   thumbnailImage: {
     width: '100%',
     height: '100%',
-  },
-  thumbnailEmoji: {
-    position: 'absolute',
   },
   publishingContainer: {
     flex: 1,

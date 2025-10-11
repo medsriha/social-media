@@ -342,7 +342,6 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
         mediaType={editorMediaType}
         videoSegments={editorMediaType === 'video' ? recording.videoSegments : undefined}
         initialCaption=""
-        initialEmojis={[]}
         onBack={handleEditorBack}
         onMakePublic={handleMakePublic}
         onSaveToGallery={handleSaveToGallery}
