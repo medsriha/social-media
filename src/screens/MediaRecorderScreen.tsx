@@ -16,10 +16,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { MediaEditorScreen } from '../components/MediaEditorScreen';
-import { FilterSelector } from '../components/FilterSelector';
 import { saveMediaMetadata } from '../utils/mediaStorage';
 import { useCameraRecording } from '../hooks/useCameraRecording';
-import { useCameraFilters } from '../hooks/useCameraFilters';
 import { useMediaSaving } from '../hooks/useMediaSaving';
 import { styles } from '../styles/MediaRecorderScreen.styles';
 
@@ -52,7 +50,6 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
   
   // Custom hooks
   const recording = useCameraRecording();
-  const filters = useCameraFilters();
   const { isUploading, handleMakePublic, handleSaveToGallery } = useMediaSaving({
     mediaPermission,
     requestMediaPermission,
@@ -120,15 +117,12 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
   const takePhoto = async () => {
     if (recording.cameraRef.current) {
       try {
-        filters.setShowFilters(false);
-        
         const photo = await recording.cameraRef.current.takePictureAsync({
           quality: 1,
         });
         
         if (photo && photo.uri) {
-          const filteredUri = await filters.applyFilterToPhoto(photo.uri);
-          setPhotoUri(filteredUri);
+          setPhotoUri(photo.uri);
         }
       } catch (error) {
         console.error('Error taking photo:', error);
@@ -137,11 +131,6 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     }
   };
 
-  // Wrap recording functions to close filters
-  const startRecordingWithFilterClose = async () => {
-    filters.setShowFilters(false);
-    await recording.startRecording();
-  };
 
   const finishRecording = async () => {
     if (recording.videoSegments.length > 0) {
@@ -367,19 +356,6 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
       <View style={styles.container}>
         <StatusBar style="light" />
         <Image source={{ uri: photoUri }} style={styles.preview} resizeMode="contain" />
-        {/* Apply filter overlay to preview */}
-        {filters.selectedFilter.id !== 'normal' && filters.selectedFilter.style.backgroundColor && (
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              {
-                backgroundColor: filters.selectedFilter.style.backgroundColor,
-                opacity: filters.selectedFilter.style.opacity || 0,
-              },
-            ]}
-            pointerEvents="none"
-          />
-        )}
         <View style={styles.photoPreviewControls}>
           <TouchableOpacity style={styles.deleteButton} onPress={discardPhoto}>
             <MaterialIcons name="delete" size={24} color="#fff" />
@@ -421,28 +397,6 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     <View style={styles.container}>
       <StatusBar style="light" />
       <CameraView style={styles.camera} facing={facing} ref={recording.cameraRef} mode={mode === 'photo' ? 'picture' : 'video'}>
-        {/* Filter overlay for real-time preview */}
-        {filters.selectedFilter.id !== 'normal' && filters.selectedFilter.style.backgroundColor && (
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              {
-                backgroundColor: filters.selectedFilter.style.backgroundColor,
-                opacity: filters.selectedFilter.style.opacity || 0,
-              },
-            ]}
-            pointerEvents="none"
-          />
-        )}
-
-        {/* Dismissible overlay - tap anywhere to close filters */}
-        {filters.showFilters && !recording.isRecording && !recording.isPaused && (
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            activeOpacity={1}
-            onPress={() => filters.setShowFilters(false)}
-          />
-        )}
 
         <View style={styles.topControls}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
@@ -470,25 +424,6 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
             <MaterialIcons name="edit" size={16} color="#fff" />
             <Text style={styles.editingText}>Adding segments to existing video</Text>
           </View>
-        )}
-
-        {/* Filter selection button */}
-        {!recording.isRecording && !recording.isPaused && (
-          <TouchableOpacity
-            style={styles.filterButton}
-            onPress={filters.toggleFilters}
-          >
-            <MaterialIcons name="filter" size={24} color="#fff" />
-            <Text style={styles.filterButtonText}>{filters.selectedFilter.name}</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Filter selector */}
-        {filters.showFilters && !recording.isRecording && !recording.isPaused && (
-          <FilterSelector
-            selectedFilter={filters.selectedFilter}
-            onFilterSelect={filters.setSelectedFilter}
-          />
         )}
         
         <View style={styles.bottomControls}>
@@ -526,7 +461,7 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
               ) : (
                 <TouchableOpacity
                   style={[styles.recordButton, recording.isRecording && styles.recordingButton]}
-                  onPress={recording.isRecording ? recording.stopRecording : startRecordingWithFilterClose}
+                  onPress={recording.isRecording ? recording.stopRecording : recording.startRecording}
                 >
                   {recording.isRecording ? (
                     <View style={styles.stopIcon} />
