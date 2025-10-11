@@ -311,8 +311,6 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
               if (selectedMedia?.uri === media.uri) {
                 setSelectedMedia(null);
               }
-              
-              Alert.alert('Success', `${media.type === 'video' ? 'Video' : 'Photo'} deleted successfully`);
             } catch (error) {
               console.error(`Error deleting ${media.type}:`, error);
               Alert.alert('Error', `Failed to delete ${media.type}`);
