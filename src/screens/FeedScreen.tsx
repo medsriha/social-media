@@ -410,7 +410,7 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
       <MaterialIcons name="video-library" size={80} color="#666" />
-      <Text style={styles.emptyTitle}>No Posts Yet</Text>
+      <Text style={styles.emptyTitle}>Your feed is empty</Text>
       <Text style={styles.emptySubtitle}>
         Start creating and sharing your first post!
       </Text>
