@@ -30,6 +30,11 @@ export const FilterSelector: React.FC<FilterSelectorProps> = ({
                 <View style={styles.filterPreviewNoFilter}>
                   <MaterialIcons name="filter-none" size={32} color="#999" />
                 </View>
+              ) : filter.isCustom ? (
+                // Show icon for "Custom" option
+                <View style={styles.filterPreviewCustom}>
+                  <MaterialIcons name="tune" size={32} color="#ff0050" />
+                </View>
               ) : (
                 <>
                   <View style={styles.filterPreviewImage} />
@@ -97,6 +102,16 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#666',
     borderStyle: 'dashed',
+    borderRadius: 8,
+  },
+  filterPreviewCustom: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    borderWidth: 2,
+    borderColor: '#ff0050',
     borderRadius: 8,
   },
   filterName: {
