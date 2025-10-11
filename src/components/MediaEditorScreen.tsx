@@ -442,13 +442,13 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Next Button */}
+          {/* Next Button - smaller and less prominent */}
           <TouchableOpacity
-            style={styles.nextButton}
+            style={styles.nextButtonSmall}
             onPress={handleNextStep}
           >
-            <Text style={styles.nextButtonText}>Next</Text>
-            <MaterialIcons name="arrow-forward" size={24} color="#fff" />
+            <Text style={styles.nextButtonTextSmall}>Next</Text>
+            <MaterialIcons name="arrow-forward" size={16} color="#fff" />
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -771,6 +771,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  nextButtonSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,0,80,0.8)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 6,
+    elevation: 2,
+    shadowColor: '#ff0050',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+  },
+  nextButtonTextSmall: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   stepIndicator: {
     position: 'absolute',
     top: Platform.OS === 'ios' ? 50 : 20,
@@ -817,27 +836,6 @@ const styles = StyleSheet.create({
   badgeText: {
     color: '#fff',
     fontSize: 12,
-    fontWeight: '700',
-  },
-  nextButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ff0050',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 12,
-    marginTop: 12,
-    gap: 8,
-    elevation: 3,
-    shadowColor: '#ff0050',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 4,
-  },
-  nextButtonText: {
-    color: '#fff',
-    fontSize: 18,
     fontWeight: '700',
   },
   mediaThumbnail: {

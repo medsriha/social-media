@@ -64,10 +64,14 @@ export const FilterSelector: React.FC<FilterSelectorProps> = ({
 const styles = StyleSheet.create({
   filterSelector: {
     position: 'absolute',
-    bottom: 140,
+    bottom: 0,
     left: 0,
     right: 0,
     paddingHorizontal: 10,
+    paddingBottom: 20,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
   },
   filterOption: {
     alignItems: 'center',
