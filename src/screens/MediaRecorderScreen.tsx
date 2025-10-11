@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,122 +8,20 @@ import {
   Platform,
   Image,
   ActivityIndicator,
-  ScrollView,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { Video, ResizeMode } from 'expo-av';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as ImageManipulator from 'expo-image-manipulator';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { MediaEditorScreen } from '../components/MediaEditorScreen';
+import { FilterSelector } from '../components/FilterSelector';
 import { saveMediaMetadata } from '../utils/mediaStorage';
-import { uploadMedia } from '../utils/api';
-
-// Filter definitions
-interface CameraFilter {
-  id: string;
-  name: string;
-  style: {
-    backgroundColor?: string;
-    opacity?: number;
-  };
-  // Image manipulator matrix for photos (brightness, contrast, saturation, etc)
-  imageManipulation?: {
-    brightness?: number;
-    contrast?: number;
-    saturation?: number;
-  };
-}
-
-const FILTERS: CameraFilter[] = [
-  {
-    id: 'normal',
-    name: 'Normal',
-    style: {},
-  },
-  {
-    id: 'bw',
-    name: 'B&W',
-    style: {
-      backgroundColor: '#000',
-      opacity: 0.5,
-    },
-    imageManipulation: {
-      saturation: -1,
-    },
-  },
-  {
-    id: 'sepia',
-    name: 'Sepia',
-    style: {
-      backgroundColor: '#704214',
-      opacity: 0.4,
-    },
-    imageManipulation: {
-      saturation: -0.3,
-      brightness: 0.1,
-    },
-  },
-  {
-    id: 'vintage',
-    name: 'Vintage',
-    style: {
-      backgroundColor: '#ff6b35',
-      opacity: 0.3,
-    },
-    imageManipulation: {
-      contrast: 0.1,
-      saturation: -0.2,
-    },
-  },
-  {
-    id: 'cool',
-    name: 'Cool',
-    style: {
-      backgroundColor: '#4A90E2',
-      opacity: 0.25,
-    },
-    imageManipulation: {
-      brightness: -0.05,
-    },
-  },
-  {
-    id: 'warm',
-    name: 'Warm',
-    style: {
-      backgroundColor: '#FF9500',
-      opacity: 0.3,
-    },
-    imageManipulation: {
-      brightness: 0.05,
-    },
-  },
-  {
-    id: 'dramatic',
-    name: 'Dramatic',
-    style: {
-      backgroundColor: '#000',
-      opacity: 0.3,
-    },
-    imageManipulation: {
-      contrast: 0.3,
-      brightness: -0.1,
-    },
-  },
-  {
-    id: 'bright',
-    name: 'Bright',
-    style: {
-      backgroundColor: '#fff',
-      opacity: 0.2,
-    },
-    imageManipulation: {
-      brightness: 0.2,
-    },
-  },
-];
+import { useCameraRecording } from '../hooks/useCameraRecording';
+import { useCameraFilters } from '../hooks/useCameraFilters';
+import { useMediaSaving } from '../hooks/useMediaSaving';
+import { styles } from '../styles/MediaRecorderScreen.styles';
 
 interface MediaRecorderScreenProps {
   onBack?: () => void;
@@ -138,38 +36,51 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
   existingVideoUri,
   existingVideoSegments,
 }) => {
-  const [facing, setFacing] = useState<CameraType>('back');
+  // Permissions
   const [permission, requestPermission] = useCameraPermissions();
   const [mediaPermission, requestMediaPermission] = MediaLibrary.usePermissions();
+  
+  // Camera state
+  const [facing, setFacing] = useState<CameraType>('back');
   const [mode, setMode] = useState<'photo' | 'video'>('video');
-  const [isRecording, setIsRecording] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [videoSegments, setVideoSegments] = useState<string[]>([]);
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [recordingTime, setRecordingTime] = useState(0);
   const [showEditor, setShowEditor] = useState(false);
   const [editorMediaUri, setEditorMediaUri] = useState<string | null>(null);
   const [editorMediaType, setEditorMediaType] = useState<'photo' | 'video'>('photo');
   const [originalVideoUri, setOriginalVideoUri] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [selectedFilter, setSelectedFilter] = useState<CameraFilter>(FILTERS[0]);
-  const [showFilters, setShowFilters] = useState(false);
-  const cameraRef = useRef<CameraView>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Custom hooks
+  const recording = useCameraRecording();
+  const filters = useCameraFilters();
+  const { isUploading, handleMakePublic, handleSaveToGallery } = useMediaSaving({
+    mediaPermission,
+    requestMediaPermission,
+    originalVideoUri,
+    onVideoSaved,
+    onResetState: () => {
+      setShowEditor(false);
+      setEditorMediaUri(null);
+      setPhotoUri(null);
+      setVideoUri(null);
+      recording.setVideoSegments([]);
+      recording.setRecordingTime(0);
+      recording.setIsPaused(false);
+      setOriginalVideoUri(null);
+    },
+  });
 
   // Load existing video segments when editing
   useEffect(() => {
     if (existingVideoUri) {
-      // If we have existing segments, use them; otherwise just use the URI
       const segments = existingVideoSegments && existingVideoSegments.length > 0 
         ? existingVideoSegments 
         : [existingVideoUri];
-      setVideoSegments(segments);
+      recording.setVideoSegments(segments);
       setOriginalVideoUri(existingVideoUri);
       setMode('video');
     }
-  }, [existingVideoUri, existingVideoSegments]);
+  }, [existingVideoUri, existingVideoSegments, recording.setVideoSegments]);
 
   useEffect(() => {
     // Request media library permission on mount
@@ -197,6 +108,7 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     );
   }
 
+  // Camera controls
   const toggleCameraFacing = () => {
     setFacing((current) => (current === 'back' ? 'front' : 'back'));
   };
@@ -205,55 +117,17 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     setMode((current) => (current === 'photo' ? 'video' : 'photo'));
   };
 
-  const applyFilterToPhoto = async (photoUri: string): Promise<string> => {
-    // If no filter applied, return original
-    if (selectedFilter.id === 'normal') {
-      return photoUri;
-    }
-
-    try {
-      const actions: any[] = [];
-      
-      // Apply filter adjustments if available
-      if (selectedFilter.imageManipulation) {
-        const manipulation = selectedFilter.imageManipulation;
-        
-        // Note: expo-image-manipulator doesn't support all adjustments directly
-        // We'll apply what we can and use the overlay for the rest
-        if (manipulation.brightness !== undefined) {
-          // Brightness adjustment (not directly supported, will use overlay)
-        }
-        
-        if (manipulation.saturation !== undefined) {
-          // Saturation adjustment (not directly supported, will use overlay)
-        }
-        
-        if (manipulation.contrast !== undefined) {
-          // Contrast adjustment (not directly supported, will use overlay)
-        }
-      }
-
-      // For now, we'll return the original and rely on the filter overlay
-      // In production, you could use more advanced image processing libraries
-      return photoUri;
-    } catch (error) {
-      console.error('Error applying filter:', error);
-      return photoUri;
-    }
-  };
-
   const takePhoto = async () => {
-    if (cameraRef.current) {
+    if (recording.cameraRef.current) {
       try {
-        setShowFilters(false); // Close filter selector when taking photo
+        filters.setShowFilters(false);
         
-        const photo = await cameraRef.current.takePictureAsync({
+        const photo = await recording.cameraRef.current.takePictureAsync({
           quality: 1,
         });
         
         if (photo && photo.uri) {
-          // Apply filter if needed
-          const filteredUri = await applyFilterToPhoto(photo.uri);
+          const filteredUri = await filters.applyFilterToPhoto(photo.uri);
           setPhotoUri(filteredUri);
         }
       } catch (error) {
@@ -263,65 +137,19 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     }
   };
 
-  const startRecording = async () => {
-    if (cameraRef.current && !isRecording) {
-      try {
-        setIsRecording(true);
-        setIsPaused(false);
-        setShowFilters(false); // Close filter selector when recording starts
-        
-        // Resume timer from where it left off
-        timerRef.current = setInterval(() => {
-          setRecordingTime((prev) => prev + 1);
-        }, 1000);
-        
-        const video = await cameraRef.current.recordAsync({
-          maxDuration: 60, // 60 seconds max
-        });
-        
-        if (video && video.uri) {
-          // Add segment to list
-          setVideoSegments((prev) => [...prev, video.uri]);
-        }
-      } catch (error) {
-        console.error('Error recording video:', error);
-        Alert.alert('Error', 'Failed to record video');
-      } finally {
-        setIsRecording(false);
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-        }
-      }
-    }
-  };
-
-  const stopRecording = () => {
-    if (cameraRef.current && isRecording) {
-      setIsPaused(true);
-      cameraRef.current.stopRecording();
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    }
-  };
-
-  const resumeRecording = () => {
-    if (isPaused && !isRecording) {
-      startRecording();
-    }
+  // Wrap recording functions to close filters
+  const startRecordingWithFilterClose = async () => {
+    filters.setShowFilters(false);
+    await recording.startRecording();
   };
 
   const finishRecording = async () => {
-    // Open editor for video
-    if (videoSegments.length > 0) {
-      // Use the most recent segment for preview
-      // But we'll pass all segments to the editor for proper handling
-      const latestSegment = videoSegments[videoSegments.length - 1];
-      
+    if (recording.videoSegments.length > 0) {
+      const latestSegment = recording.videoSegments[recording.videoSegments.length - 1];
       setEditorMediaUri(latestSegment);
       setEditorMediaType('video');
       setShowEditor(true);
-      setIsPaused(false);
+      recording.setIsPaused(false);
     }
   };
 
@@ -338,13 +166,12 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            // Clear new recordings but keep original video if editing
             const segmentsToKeep = originalVideoUri ? [originalVideoUri] : [];
-            setVideoSegments(segmentsToKeep);
-            setRecordingTime(0);
-            setIsPaused(false);
-            if (timerRef.current) {
-              clearInterval(timerRef.current);
+            recording.setVideoSegments(segmentsToKeep);
+            recording.setRecordingTime(0);
+            recording.setIsPaused(false);
+            if (recording.timerRef.current) {
+              clearInterval(recording.timerRef.current);
             }
           },
         },
@@ -353,14 +180,8 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     );
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   const saveVideoDirectly = async () => {
-    if (videoSegments.length === 0) return;
+    if (recording.videoSegments.length === 0) return;
 
     try {
       // Request media library permission if not granted
@@ -381,7 +202,7 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
       }
 
       // Use the last segment
-      const sourceUri = videoSegments[videoSegments.length - 1];
+      const sourceUri = recording.videoSegments[recording.videoSegments.length - 1];
       
       // Generate unique filename
       const timestamp = new Date().getTime();
@@ -406,9 +227,9 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
       }
       
       // Reset state
-      setVideoSegments([]);
-      setRecordingTime(0);
-      setIsPaused(false);
+      recording.setVideoSegments([]);
+      recording.setRecordingTime(0);
+      recording.setIsPaused(false);
     } catch (error) {
       console.error('Error saving video:', error);
       Alert.alert('Error', 'Failed to save video');
@@ -416,7 +237,7 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
   };
 
   const saveVideo = async () => {
-    if (!videoUri && videoSegments.length === 0) return;
+    if (!videoUri && recording.videoSegments.length === 0) return;
 
     try {
       // Request media library permission if not granted
@@ -437,7 +258,7 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
       }
 
       // Use the last segment or the preview video
-      const sourceUri = videoUri || videoSegments[videoSegments.length - 1];
+      const sourceUri = videoUri || recording.videoSegments[recording.videoSegments.length - 1];
       
       // Generate unique filename
       const timestamp = new Date().getTime();
@@ -463,8 +284,8 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
       
       // Reset state
       setVideoUri(null);
-      setVideoSegments([]);
-      setRecordingTime(0);
+      recording.setVideoSegments([]);
+      recording.setRecordingTime(0);
     } catch (error) {
       console.error('Error saving video:', error);
       Alert.alert('Error', 'Failed to save video');
@@ -473,9 +294,9 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
 
   const discardVideo = () => {
     setVideoUri(null);
-    setVideoSegments([]);
-    setRecordingTime(0);
-    setIsPaused(false);
+    recording.setVideoSegments([]);
+    recording.setRecordingTime(0);
+    recording.setIsPaused(false);
   };
 
   const savePhoto = async () => {
@@ -491,245 +312,20 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     setPhotoUri(null);
   };
 
-  const handleMakePublic = async (data: {
-    uri: string;
-    caption: string;
-    emojis: any[];
-    type: 'photo' | 'video';
-    segments?: string[];
-  }) => {
-    setIsUploading(true);
-    try {
-      // ========================================
-      // IMPORTANT: This UPLOADS media to BACKEND
-      // Media becomes PUBLIC and stored in database
-      // All users can see it in the feed
-      // ========================================
-      
-      // Request media library permission if not granted
-      if (!mediaPermission?.granted) {
-        const { status } = await requestMediaPermission();
-        if (status !== 'granted') {
-          Alert.alert('Permission Required', 'Media library permission is needed to make this public');
-          setIsUploading(false);
-          return;
-        }
-      }
-
-      // Upload media to backend API (PUBLIC)
-      console.log('Uploading PUBLIC media to backend...', { uri: data.uri, type: data.type });
-      
-      const uploadResponse = await uploadMedia({
-        fileUri: data.uri,
-        mediaType: data.type,
-        caption: data.caption,
-        emojis: data.emojis,
-        published: true, // PUBLIC - uploads to backend database
-      });
-
-      console.log('Upload successful - media is now public:', uploadResponse);
-      console.log('Backend ID received:', uploadResponse.id);
-
-      // Save to device's LOCAL gallery with metadata (published: true)
-      // This ensures the user has their own copy even after publishing
-      const directory = data.type === 'photo' 
-        ? `${FileSystem.documentDirectory}photos/`
-        : `${FileSystem.documentDirectory}videos/`;
-      
-      const dirInfo = await FileSystem.getInfoAsync(directory);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
-      }
-
-      // Generate unique filename for local copy
-      const timestamp = new Date().getTime();
-      const extension = data.type === 'photo' ? 'jpg' : 'mp4';
-      const filename = `${data.type}_${timestamp}.${extension}`;
-      const localUri = `${directory}${filename}`;
-
-      // Copy media to local gallery
-      await FileSystem.copyAsync({
-        from: data.uri,
-        to: localUri,
-      });
-
-      console.log('💾 Saving metadata with ID:', uploadResponse.id, 'to:', localUri);
-      
-      // Save metadata with published: true and backend ID
-      const metadataSaved = await saveMediaMetadata(localUri, {
-        id: uploadResponse.id, // Save backend database ID
-        type: data.type,
-        caption: data.caption,
-        emojis: data.emojis,
-        published: true, // Mark as published
-        segments: data.segments,
-      });
-      
-      console.log('Metadata saved:', metadataSaved);
-
-      // Optionally save to device's media library (Photos app)
-      if (Platform.OS !== 'web') {
-        try {
-          await MediaLibrary.saveToLibraryAsync(data.uri);
-        } catch (err) {
-          console.log('Could not save to media library:', err);
-        }
-      }
-
-      // If we were editing an existing video, delete the old one from gallery
-      if (originalVideoUri) {
-        try {
-          await FileSystem.deleteAsync(originalVideoUri);
-          // Try to delete metadata if it exists
-          const metadataFileName = originalVideoUri.replace(/\.mp4$/, '.json');
-          const metadataFileInfo = await FileSystem.getInfoAsync(metadataFileName);
-          if (metadataFileInfo.exists) {
-            await FileSystem.deleteAsync(metadataFileName);
-          }
-        } catch (err) {
-          console.log('Could not delete original video:', err);
-        }
-      }
-
-      Alert.alert('Success', `${data.type === 'photo' ? 'Photo' : 'Video'} is now public and saved to your gallery!`);
-      
-      if (onVideoSaved) {
-        onVideoSaved(data.uri);
-      }
-      
-      // Reset all state
-      setShowEditor(false);
-      setEditorMediaUri(null);
-      setPhotoUri(null);
-      setVideoUri(null);
-      setVideoSegments([]);
-      setRecordingTime(0);
-      setIsPaused(false);
-      setOriginalVideoUri(null);
-    } catch (error) {
-      console.error('Error making public:', error);
-      Alert.alert(
-        'Upload Failed', 
-        'Failed to upload media to server. Please make sure the backend is running and try again.'
-      );
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
+  // Editor handlers
   const handleEditorBack = () => {
     setShowEditor(false);
     setEditorMediaUri(null);
   };
 
-  const handleSaveToGallery = async (data: {
-    uri: string;
-    caption: string;
-    emojis: any[];
-    type: 'photo' | 'video';
-    segments?: string[];
-  }) => {
-    try {
-      // ========================================
-      // IMPORTANT: This saves media LOCALLY ONLY
-      // Media is NOT uploaded to backend
-      // It stays private on the user's device
-      // ========================================
-      
-      // Request media library permission if not granted
-      if (!mediaPermission?.granted) {
-        const { status } = await requestMediaPermission();
-        if (status !== 'granted') {
-          Alert.alert('Permission Required', 'Media library permission is needed to save');
-          return;
-        }
-      }
-
-      // If editing existing video, save to the same location and overwrite metadata
-      if (originalVideoUri && data.type === 'video') {
-        // Use the new saveMediaMetadata utility
-        const success = await saveMediaMetadata(originalVideoUri, {
-          type: data.type,
-          caption: data.caption,
-          emojis: data.emojis,
-          published: false, // PRIVATE - stays on device
-          segments: data.segments,
-        });
-
-        if (success) {
-          Alert.alert('Success', 'Video saved privately to your device!');
-        } else {
-          throw new Error('Failed to save metadata');
-        }
-      } else {
-        // New media - save to LOCAL gallery (device only)
-        const directory = data.type === 'photo' 
-          ? `${FileSystem.documentDirectory}photos/`
-          : `${FileSystem.documentDirectory}videos/`;
-        
-        const dirInfo = await FileSystem.getInfoAsync(directory);
-        
-        if (!dirInfo.exists) {
-          await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
-        }
-
-        // Generate unique filename
-        const timestamp = new Date().getTime();
-        const extension = data.type === 'photo' ? 'jpg' : 'mp4';
-        const filename = `${data.type}_${timestamp}.${extension}`;
-        const newUri = `${directory}${filename}`;
-
-        // Copy the media to LOCAL gallery storage
-        await FileSystem.copyAsync({
-          from: data.uri,
-          to: newUri,
-        });
-
-        // Save metadata with published: false (PRIVATE)
-        await saveMediaMetadata(newUri, {
-          type: data.type,
-          caption: data.caption,
-          emojis: data.emojis,
-          published: false, // PRIVATE - stays on device, NOT uploaded
-          segments: data.segments,
-        });
-
-        // Optionally save to device's media library
-        if (Platform.OS !== 'web') {
-          await MediaLibrary.saveToLibraryAsync(data.uri);
-        }
-
-        Alert.alert('Success', `${data.type === 'photo' ? 'Photo' : 'Video'} saved privately to your device!`);
-      }
-      
-      if (onVideoSaved) {
-        onVideoSaved(originalVideoUri || data.uri);
-      }
-      
-      // Reset all state
-      setShowEditor(false);
-      setEditorMediaUri(null);
-      setPhotoUri(null);
-      setVideoUri(null);
-      setVideoSegments([]);
-      setRecordingTime(0);
-      setIsPaused(false);
-      setOriginalVideoUri(null);
-    } catch (error) {
-      console.error('Error saving to gallery:', error);
-      Alert.alert('Error', 'Failed to save media to gallery');
-    }
-  };
-
   const handleEditorDelete = () => {
-    // Simply close the editor and discard
     setShowEditor(false);
     setEditorMediaUri(null);
     setPhotoUri(null);
     setVideoUri(null);
-    setVideoSegments([]);
-    setRecordingTime(0);
-    setIsPaused(false);
+    recording.setVideoSegments([]);
+    recording.setRecordingTime(0);
+    recording.setIsPaused(false);
   };
 
   const handleBack = () => {
@@ -755,7 +351,7 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
       <MediaEditorScreen
         mediaUri={editorMediaUri}
         mediaType={editorMediaType}
-        videoSegments={editorMediaType === 'video' ? videoSegments : undefined}
+        videoSegments={editorMediaType === 'video' ? recording.videoSegments : undefined}
         initialCaption=""
         initialEmojis={[]}
         onBack={handleEditorBack}
@@ -772,13 +368,13 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
         <StatusBar style="light" />
         <Image source={{ uri: photoUri }} style={styles.preview} resizeMode="contain" />
         {/* Apply filter overlay to preview */}
-        {selectedFilter.id !== 'normal' && selectedFilter.style.backgroundColor && (
+        {filters.selectedFilter.id !== 'normal' && filters.selectedFilter.style.backgroundColor && (
           <View
             style={[
               StyleSheet.absoluteFill,
               {
-                backgroundColor: selectedFilter.style.backgroundColor,
-                opacity: selectedFilter.style.opacity || 0,
+                backgroundColor: filters.selectedFilter.style.backgroundColor,
+                opacity: filters.selectedFilter.style.opacity || 0,
               },
             ]}
             pointerEvents="none"
@@ -824,15 +420,15 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
-      <CameraView style={styles.camera} facing={facing} ref={cameraRef} mode={mode === 'photo' ? 'picture' : 'video'}>
+      <CameraView style={styles.camera} facing={facing} ref={recording.cameraRef} mode={mode === 'photo' ? 'picture' : 'video'}>
         {/* Filter overlay for real-time preview */}
-        {selectedFilter.id !== 'normal' && selectedFilter.style.backgroundColor && (
+        {filters.selectedFilter.id !== 'normal' && filters.selectedFilter.style.backgroundColor && (
           <View
             style={[
               StyleSheet.absoluteFill,
               {
-                backgroundColor: selectedFilter.style.backgroundColor,
-                opacity: selectedFilter.style.opacity || 0,
+                backgroundColor: filters.selectedFilter.style.backgroundColor,
+                opacity: filters.selectedFilter.style.opacity || 0,
               },
             ]}
             pointerEvents="none"
@@ -840,11 +436,11 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
         )}
 
         {/* Dismissible overlay - tap anywhere to close filters */}
-        {showFilters && !isRecording && !isPaused && (
+        {filters.showFilters && !recording.isRecording && !recording.isPaused && (
           <TouchableOpacity
             style={StyleSheet.absoluteFill}
             activeOpacity={1}
-            onPress={() => setShowFilters(false)}
+            onPress={() => filters.setShowFilters(false)}
           />
         )}
 
@@ -869,7 +465,7 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
         </View>
 
         {/* Editing indicator */}
-        {originalVideoUri && videoSegments.length > 0 && (
+        {originalVideoUri && recording.videoSegments.length > 0 && (
           <View style={styles.editingIndicator}>
             <MaterialIcons name="edit" size={16} color="#fff" />
             <Text style={styles.editingText}>Adding segments to existing video</Text>
@@ -877,66 +473,27 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
         )}
 
         {/* Filter selection button */}
-        {!isRecording && !isPaused && (
+        {!recording.isRecording && !recording.isPaused && (
           <TouchableOpacity
             style={styles.filterButton}
-            onPress={() => setShowFilters(!showFilters)}
+            onPress={filters.toggleFilters}
           >
             <MaterialIcons name="filter" size={24} color="#fff" />
-            <Text style={styles.filterButtonText}>{selectedFilter.name}</Text>
+            <Text style={styles.filterButtonText}>{filters.selectedFilter.name}</Text>
           </TouchableOpacity>
         )}
 
         {/* Filter selector */}
-        {showFilters && !isRecording && !isPaused && (
-          <View style={styles.filterSelector}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {FILTERS.map((filter) => (
-                <TouchableOpacity
-                  key={filter.id}
-                  style={[
-                    styles.filterOption,
-                    selectedFilter.id === filter.id && styles.filterOptionActive,
-                  ]}
-                  onPress={() => {
-                    setSelectedFilter(filter);
-                    // Keep filter list open for easy comparison
-                  }}
-                >
-                  <View style={styles.filterPreview}>
-                    {filter.id === 'normal' ? (
-                      // Show icon for "No Filter" option
-                      <View style={styles.filterPreviewNoFilter}>
-                        <MaterialIcons name="filter-none" size={32} color="#999" />
-                      </View>
-                    ) : (
-                      <>
-                        <View style={styles.filterPreviewImage} />
-                        {filter.style.backgroundColor && (
-                          <View
-                            style={[
-                              StyleSheet.absoluteFill,
-                              {
-                                backgroundColor: filter.style.backgroundColor,
-                                opacity: filter.style.opacity || 0,
-                                borderRadius: 8,
-                              },
-                            ]}
-                          />
-                        )}
-                      </>
-                    )}
-                  </View>
-                  <Text style={styles.filterName}>{filter.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
+        {filters.showFilters && !recording.isRecording && !recording.isPaused && (
+          <FilterSelector
+            selectedFilter={filters.selectedFilter}
+            onFilterSelect={filters.setSelectedFilter}
+          />
         )}
         
         <View style={styles.bottomControls}>
           <View style={styles.leftControl}>
-            {!isRecording && !isPaused && (
+            {!recording.isRecording && !recording.isPaused && (
               <TouchableOpacity style={styles.flipButton} onPress={toggleCameraFacing}>
                 <MaterialIcons name="flip-camera-ios" size={32} color="#fff" />
               </TouchableOpacity>
@@ -945,7 +502,7 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
           
           <View style={styles.centerControl}>
             {mode === 'video' ? (
-              isPaused ? (
+              recording.isPaused ? (
                 <>
                   <TouchableOpacity
                     style={styles.doneButton}
@@ -955,7 +512,7 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.resumeButton}
-                    onPress={resumeRecording}
+                    onPress={recording.resumeRecording}
                   >
                     <MaterialIcons name="fiber-manual-record" size={24} color="#fff" />
                   </TouchableOpacity>
@@ -968,10 +525,10 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
                 </>
               ) : (
                 <TouchableOpacity
-                  style={[styles.recordButton, isRecording && styles.recordingButton]}
-                  onPress={isRecording ? stopRecording : startRecording}
+                  style={[styles.recordButton, recording.isRecording && styles.recordingButton]}
+                  onPress={recording.isRecording ? recording.stopRecording : startRecordingWithFilterClose}
                 >
-                  {isRecording ? (
+                  {recording.isRecording ? (
                     <View style={styles.stopIcon} />
                   ) : (
                     <View style={styles.recordIcon} />
@@ -991,19 +548,19 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
           <View style={styles.rightControl} />
         </View>
         
-        {(isRecording || isPaused) && (
+        {(recording.isRecording || recording.isPaused) && (
           <View style={styles.recordingIndicator}>
-            {isRecording && <View style={styles.recordingDot} />}
+            {recording.isRecording && <View style={styles.recordingDot} />}
             <Text style={styles.recordingText}>
-              {formatTime(recordingTime)}
+              {recording.formatTime(recording.recordingTime)}
             </Text>
-            {isPaused && videoSegments.length > 0 && (
-              <Text style={styles.segmentText}>• {videoSegments.length} segment{videoSegments.length > 1 ? 's' : ''}</Text>
+            {recording.isPaused && recording.videoSegments.length > 0 && (
+              <Text style={styles.segmentText}>• {recording.videoSegments.length} segment{recording.videoSegments.length > 1 ? 's' : ''}</Text>
             )}
           </View>
         )}
         
-        {isPaused && (
+        {recording.isPaused && (
           <View style={styles.pauseOverlay}>
             <MaterialIcons name="pause" size={80} color="rgba(255,255,255,0.9)" />
           </View>
@@ -1012,362 +569,3 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  centerContent: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  message: {
-    textAlign: 'center',
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginTop: 20,
-    marginBottom: 8,
-  },
-  submessage: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#999',
-    marginBottom: 32,
-  },
-  camera: {
-    flex: 1,
-  },
-  topControls: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 50,
-    paddingHorizontal: 20,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modeToggle: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 22,
-    padding: 4,
-    gap: 4,
-  },
-  modeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modeButtonActive: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  editingIndicator: {
-    position: 'absolute',
-    top: 100,
-    left: 20,
-    right: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(52, 199, 89, 0.9)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 8,
-  },
-  editingText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  bottomControls: {
-    position: 'absolute',
-    bottom: 50,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  leftControl: {
-    flex: 1,
-    alignItems: 'flex-start',
-  },
-  centerControl: {
-    flex: 1,
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  rightControl: {
-    flex: 1,
-  },
-  flipButton: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  recordButton: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 5,
-    borderColor: '#fff',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  recordingButton: {
-    backgroundColor: 'rgba(255,0,0,0.3)',
-  },
-  recordIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#ff0000',
-  },
-  stopIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: '#ff0000',
-  },
-  recordingIndicator: {
-    position: 'absolute',
-    top: 60,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 18,
-  },
-  recordingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ff0000',
-    marginRight: 6,
-  },
-  recordingText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  segmentText: {
-    color: '#fff',
-    fontSize: 10,
-    marginLeft: 6,
-  },
-  pauseOverlay: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: [{ translateX: -40 }, { translateY: -100 }],
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  resumeButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ff0050',
-    elevation: 3,
-    shadowColor: '#ff0050',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-  },
-  doneButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#34C759',
-    elevation: 3,
-    shadowColor: '#34C759',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-  },
-  deleteButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ff3b30',
-    elevation: 3,
-    shadowColor: '#ff3b30',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-  },
-  captureButton: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 5,
-    borderColor: '#fff',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  captureButtonInner: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#fff',
-  },
-  preview: {
-    flex: 1,
-  },
-  video: {
-    flex: 1,
-  },
-  photoPreviewControls: {
-    position: 'absolute',
-    bottom: 50,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 20,
-  },
-  previewControls: {
-    position: 'absolute',
-    bottom: 40,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  previewButton: {
-    alignItems: 'center',
-    padding: 15,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 50,
-    minWidth: 100,
-  },
-  previewButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 8,
-  },
-  button: {
-    backgroundColor: '#ff0050',
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 30,
-    elevation: 5,
-    shadowColor: '#ff0050',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  filterButton: {
-    position: 'absolute',
-    top: 110,
-    right: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 6,
-  },
-  filterButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  filterSelector: {
-    position: 'absolute',
-    bottom: 140,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 10,
-  },
-  filterOption: {
-    alignItems: 'center',
-    marginHorizontal: 6,
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  filterOptionActive: {
-    backgroundColor: 'rgba(255,0,80,0.6)',
-    borderWidth: 2,
-    borderColor: '#ff0050',
-  },
-  filterPreview: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    overflow: 'hidden',
-    marginBottom: 4,
-  },
-  filterPreviewImage: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#444',
-  },
-  filterPreviewNoFilter: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#666',
-    borderStyle: 'dashed',
-    borderRadius: 8,
-  },
-  filterName: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '500',
-  },
-});
-
