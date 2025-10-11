@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Dimensions, Animated, PanResponder } from 'react-native';
+import React, { useState, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Dimensions } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { CustomFilterValues } from '../constants/cameraFilters';
@@ -49,49 +49,12 @@ export const CustomFilterEditor: React.FC<CustomFilterEditorProps> = ({
   const [values, setValues] = useState<CustomFilterValues>(initialValues);
   const [currentPage, setCurrentPage] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
-  const translateY = useRef(new Animated.Value(0)).current;
 
-  // Pan responder for drag-to-dismiss
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Only respond to vertical drags
-        return Math.abs(gestureState.dy) > 5 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
-      },
-      onPanResponderMove: (_, gestureState) => {
-        // Only allow dragging down
-        if (gestureState.dy > 0) {
-          translateY.setValue(gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        // If dragged down more than 100px, close the modal
-        if (gestureState.dy > 100) {
-          Animated.timing(translateY, {
-            toValue: 300,
-            duration: 200,
-            useNativeDriver: true,
-          }).start(() => {
-            onClose();
-            translateY.setValue(0);
-          });
-        } else {
-          // Spring back to original position
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-          }).start();
-        }
-      },
-    })
-  ).current;
-
-  const handleValueChange = (key: keyof CustomFilterValues, value: number | string) => {
+  const handleValueChange = useCallback((key: keyof CustomFilterValues, value: number | string) => {
     const newValues = { ...values, [key]: value };
     setValues(newValues);
     onApply(newValues); // Real-time preview
-  };
+  }, [values, onApply]);
 
   const handleReset = () => {
     const resetValues: CustomFilterValues = {
@@ -196,27 +159,13 @@ export const CustomFilterEditor: React.FC<CustomFilterEditorProps> = ({
           onPress={onClose}
         />
 
-        {/* Editor Panel with drag-to-dismiss */}
-        <Animated.View 
-          style={[
-            styles.editorPanel,
-            {
-              transform: [{ translateY }],
-            },
-          ]}
-        >
-          {/* Drag Handle */}
-          <View {...panResponder.panHandlers} style={styles.dragHandleContainer}>
-            <View style={styles.dragHandle} />
-          </View>
-
+        {/* Editor Panel */}
+        <View style={styles.editorPanel}>
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={handleReset} style={styles.iconButton}>
               <MaterialIcons name="refresh" size={24} color="#ff0050" />
             </TouchableOpacity>
-            
-            <Text style={styles.title}>Custom Filter</Text>
             
             <TouchableOpacity onPress={onClose} style={styles.iconButton}>
               <MaterialIcons name="check" size={24} color="#ff0050" />
@@ -232,6 +181,8 @@ export const CustomFilterEditor: React.FC<CustomFilterEditorProps> = ({
             onScroll={handleScroll}
             scrollEventThrottle={16}
             style={styles.pager}
+            bounces={false}
+            decelerationRate="fast"
           >
             {FILTER_PARAMETERS.map((param, index) => renderParameter(param, index))}
           </ScrollView>
@@ -250,8 +201,8 @@ export const CustomFilterEditor: React.FC<CustomFilterEditorProps> = ({
           </View>
 
           {/* Swipe Hint */}
-          <Text style={styles.swipeHint}>Swipe to adjust • Drag down to close</Text>
-        </Animated.View>
+          <Text style={styles.swipeHint}>Swipe to adjust • Tap outside to close</Text>
+        </View>
       </View>
     </Modal>
   );
@@ -271,16 +222,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingBottom: 20,
-  },
-  dragHandleContainer: {
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#666',
   },
   header: {
     flexDirection: 'row',
