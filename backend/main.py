@@ -36,8 +36,9 @@ class MediaPost(Base):
     published = Column(Boolean, default=True)
     file_path = Column(String)
     
-    # Relationship to comments
+    # Relationships
     comments = relationship("Comment", back_populates="media_post", cascade="all, delete-orphan")
+    likes = relationship("MediaLike", back_populates="media_post", cascade="all, delete-orphan")
 
 class Comment(Base):
     __tablename__ = "comments"
@@ -73,6 +74,21 @@ class CommentLike(Base):
     
     # Relationships
     comment = relationship("Comment", back_populates="likes")
+
+class MediaLike(Base):
+    __tablename__ = "media_likes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Foreign keys
+    media_post_id = Column(Integer, ForeignKey("media_posts.id"), nullable=False)
+    
+    # User information (simplified - in a real app you'd have a User model)
+    user_name = Column(String, nullable=False, default="Anonymous")
+    
+    # Relationships
+    media_post = relationship("MediaPost", back_populates="likes")
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -113,6 +129,17 @@ class CommentLikeResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class MediaLikeResponse(BaseModel):
+    id: int
+    user_name: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class MediaLikeCreate(BaseModel):
+    user_name: Optional[str] = "Anonymous"
 
 class CommentResponse(BaseModel):
     id: int
@@ -617,6 +644,70 @@ async def get_comment_likes(comment_id: int, db: Session = Depends(get_db)):
     
     likes = db.query(CommentLike).filter(CommentLike.comment_id == comment_id).all()
     return [CommentLikeResponse.model_validate(like) for like in likes]
+
+# Media Like endpoints
+@app.post("/api/media/{media_id}/like")
+async def like_media(media_id: int, like_data: MediaLikeCreate, db: Session = Depends(get_db)):
+    """
+    Like a media post
+    """
+    # Verify media post exists
+    media_post = db.query(MediaPost).filter(MediaPost.id == media_id).first()
+    if not media_post:
+        raise HTTPException(status_code=404, detail="Media post not found")
+    
+    # Check if user already liked this media
+    existing_like = db.query(MediaLike).filter(
+        MediaLike.media_post_id == media_id,
+        MediaLike.user_name == like_data.user_name
+    ).first()
+    
+    if existing_like:
+        raise HTTPException(status_code=400, detail="Media already liked by this user")
+    
+    # Create new like
+    like = MediaLike(
+        media_post_id=media_id,
+        user_name=like_data.user_name
+    )
+    
+    db.add(like)
+    db.commit()
+    db.refresh(like)
+    
+    return {"message": "Media liked successfully", "like_id": like.id}
+
+@app.delete("/api/media/{media_id}/like")
+async def unlike_media(media_id: int, user_name: str, db: Session = Depends(get_db)):
+    """
+    Unlike a media post
+    """
+    # Find the like
+    like = db.query(MediaLike).filter(
+        MediaLike.media_post_id == media_id,
+        MediaLike.user_name == user_name
+    ).first()
+    
+    if not like:
+        raise HTTPException(status_code=404, detail="Like not found")
+    
+    db.delete(like)
+    db.commit()
+    
+    return {"message": "Media unliked successfully"}
+
+@app.get("/api/media/{media_id}/likes", response_model=List[MediaLikeResponse])
+async def get_media_likes(media_id: int, db: Session = Depends(get_db)):
+    """
+    Get all likes for a media post
+    """
+    # Verify media post exists
+    media_post = db.query(MediaPost).filter(MediaPost.id == media_id).first()
+    if not media_post:
+        raise HTTPException(status_code=404, detail="Media post not found")
+    
+    likes = db.query(MediaLike).filter(MediaLike.media_post_id == media_id).all()
+    return [MediaLikeResponse.model_validate(like) for like in likes]
 
 if __name__ == "__main__":
     import uvicorn
