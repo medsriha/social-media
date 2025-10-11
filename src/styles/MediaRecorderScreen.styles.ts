@@ -1,5 +1,7 @@
 import { StyleSheet } from 'react-native';
 
+// Updated styles for new button layout
+
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -243,15 +245,32 @@ export const styles = StyleSheet.create({
   video: {
     flex: 1,
   },
+  previewTopControls: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
+    right: 20,
+    zIndex: 10,
+  },
   photoPreviewControls: {
     position: 'absolute',
     bottom: 50,
     left: 0,
     right: 0,
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-around',
     alignItems: 'center',
-    gap: 20,
+    paddingHorizontal: 40,
+  },
+  videoPreviewControls: {
+    position: 'absolute',
+    bottom: 50,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingHorizontal: 40,
   },
   previewControls: {
     position: 'absolute',
@@ -355,6 +374,48 @@ export const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 11,
     fontWeight: '500',
+  },
+  retakeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 59, 48, 0.9)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    minWidth: 120,
+    gap: 8,
+    elevation: 3,
+    shadowColor: '#ff3b30',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
+  retakeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  nextButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(52, 199, 89, 0.9)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    minWidth: 120,
+    gap: 8,
+    elevation: 3,
+    shadowColor: '#34C759',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
+  nextButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

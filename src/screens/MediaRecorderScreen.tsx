@@ -297,6 +297,92 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     setShowEditor(true);
   };
 
+  const savePhotoToGallery = async (photoUri: string) => {
+    try {
+      // Request media library permission if not granted
+      if (!mediaPermission?.granted) {
+        const { status } = await requestMediaPermission();
+        if (status !== 'granted') {
+          throw new Error('Media library permission is needed to save photos');
+        }
+      }
+
+      // Create a permanent directory for app photos
+      const photoDirectory = `${FileSystem.documentDirectory}photos/`;
+      const dirInfo = await FileSystem.getInfoAsync(photoDirectory);
+      
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(photoDirectory, { intermediates: true });
+      }
+
+      // Generate unique filename
+      const timestamp = new Date().getTime();
+      const filename = `photo_${timestamp}.jpg`;
+      const newUri = `${photoDirectory}${filename}`;
+
+      // Copy the photo to permanent storage
+      await FileSystem.copyAsync({
+        from: photoUri,
+        to: newUri,
+      });
+
+      // Save to device's media library
+      if (Platform.OS !== 'web') {
+        const asset = await MediaLibrary.saveToLibraryAsync(photoUri);
+        console.log('Photo saved to gallery:', asset);
+        return asset;
+      }
+      
+      return { uri: newUri };
+    } catch (error) {
+      console.error('Error saving photo:', error);
+      throw error;
+    }
+  };
+
+  const saveVideoToGallery = async (videoUri: string) => {
+    try {
+      // Request media library permission if not granted
+      if (!mediaPermission?.granted) {
+        const { status } = await requestMediaPermission();
+        if (status !== 'granted') {
+          throw new Error('Media library permission is needed to save videos');
+        }
+      }
+
+      // Create a permanent directory for app videos
+      const videoDirectory = `${FileSystem.documentDirectory}videos/`;
+      const dirInfo = await FileSystem.getInfoAsync(videoDirectory);
+      
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(videoDirectory, { intermediates: true });
+      }
+
+      // Generate unique filename
+      const timestamp = new Date().getTime();
+      const filename = `video_${timestamp}.mp4`;
+      const newUri = `${videoDirectory}${filename}`;
+
+      // Copy the video to permanent storage
+      await FileSystem.copyAsync({
+        from: videoUri,
+        to: newUri,
+      });
+
+      // Save to device's media library
+      if (Platform.OS !== 'web') {
+        const asset = await MediaLibrary.saveToLibraryAsync(videoUri);
+        console.log('Video saved to gallery:', asset);
+        return asset;
+      }
+      
+      return { uri: newUri };
+    } catch (error) {
+      console.error('Error saving video:', error);
+      throw error;
+    }
+  };
+
   const discardPhoto = () => {
     setPhotoUri(null);
   };
@@ -321,6 +407,129 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     if (onBack) {
       onBack();
     }
+  };
+
+  const handleBackFromPhotoPreview = () => {
+    Alert.alert(
+      'Save Photo?',
+      'Do you want to save this photo to your gallery before going back?',
+      [
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            setPhotoUri(null);
+            if (onBack) {
+              onBack();
+            }
+          },
+        },
+        {
+          text: 'Save & Back',
+          onPress: async () => {
+            try {
+              if (photoUri) {
+                console.log('Saving photo to gallery:', photoUri);
+                const asset = await savePhotoToGallery(photoUri);
+                console.log('Photo saved successfully:', asset);
+                Alert.alert('Success', 'Photo saved to gallery!', [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      setPhotoUri(null);
+                      if (onBack) {
+                        onBack();
+                      }
+                    },
+                  },
+                ]);
+              } else {
+                console.log('No photo to save, going back');
+                setPhotoUri(null);
+                if (onBack) {
+                  onBack();
+                }
+              }
+            } catch (error) {
+              console.error('Error saving photo:', error);
+              const errorMessage = error instanceof Error ? error.message : 'Failed to save photo to gallery. Please try again.';
+              Alert.alert('Error', errorMessage);
+            }
+          },
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const handleBackFromVideoPreview = () => {
+    Alert.alert(
+      'Save Video?',
+      'Do you want to save this video to your gallery before going back?',
+      [
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            setVideoUri(null);
+            recording.setVideoSegments([]);
+            recording.setRecordingTime(0);
+            recording.setIsPaused(false);
+            if (onBack) {
+              onBack();
+            }
+          },
+        },
+        {
+          text: 'Save & Back',
+          onPress: async () => {
+            try {
+              if (videoUri) {
+                console.log('Saving video to gallery:', videoUri);
+                const asset = await saveVideoToGallery(videoUri);
+                console.log('Video saved successfully:', asset);
+                Alert.alert('Success', 'Video saved to gallery!', [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      setVideoUri(null);
+                      recording.setVideoSegments([]);
+                      recording.setRecordingTime(0);
+                      recording.setIsPaused(false);
+                      if (onBack) {
+                        onBack();
+                      }
+                    },
+                  },
+                ]);
+              } else {
+                console.log('No video to save, going back');
+                setVideoUri(null);
+                recording.setVideoSegments([]);
+                recording.setRecordingTime(0);
+                recording.setIsPaused(false);
+                if (onBack) {
+                  onBack();
+                }
+              }
+            } catch (error) {
+              console.error('Error saving video:', error);
+              const errorMessage = error instanceof Error ? error.message : 'Failed to save video to gallery. Please try again.';
+              Alert.alert('Error', errorMessage);
+            }
+          },
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   // Show uploading indicator
@@ -354,13 +563,20 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     return (
       <View style={styles.container}>
         <StatusBar style="light" />
+        <View style={styles.previewTopControls}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBackFromPhotoPreview}>
+            <MaterialIcons name="arrow-back" size={28} color="#fff" />
+          </TouchableOpacity>
+        </View>
         <Image source={{ uri: photoUri }} style={styles.preview} resizeMode="contain" />
         <View style={styles.photoPreviewControls}>
-          <TouchableOpacity style={styles.deleteButton} onPress={discardPhoto}>
-            <MaterialIcons name="delete" size={24} color="#fff" />
+          <TouchableOpacity style={styles.retakeButton} onPress={discardPhoto}>
+            <MaterialIcons name="refresh" size={24} color="#fff" />
+            <Text style={styles.retakeButtonText}>Retake</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.doneButton} onPress={savePhoto}>
-            <MaterialIcons name="check" size={24} color="#fff" />
+          <TouchableOpacity style={styles.nextButton} onPress={savePhoto}>
+            <MaterialIcons name="arrow-forward" size={24} color="#fff" />
+            <Text style={styles.nextButtonText}>Next</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -371,6 +587,11 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     return (
       <View style={styles.container}>
         <StatusBar style="light" />
+        <View style={styles.previewTopControls}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBackFromVideoPreview}>
+            <MaterialIcons name="arrow-back" size={28} color="#fff" />
+          </TouchableOpacity>
+        </View>
         <Video
           source={{ uri: videoUri }}
           style={styles.video}
@@ -378,14 +599,14 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
           resizeMode={ResizeMode.CONTAIN}
           isLooping
         />
-        <View style={styles.previewControls}>
-          <TouchableOpacity style={styles.previewButton} onPress={discardVideo}>
-            <MaterialIcons name="close" size={32} color="#fff" />
-            <Text style={styles.previewButtonText}>Discard</Text>
+        <View style={styles.videoPreviewControls}>
+          <TouchableOpacity style={styles.retakeButton} onPress={discardVideo}>
+            <MaterialIcons name="refresh" size={24} color="#fff" />
+            <Text style={styles.retakeButtonText}>Retake</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.previewButton} onPress={saveVideo}>
-            <MaterialIcons name="check" size={32} color="#fff" />
-            <Text style={styles.previewButtonText}>Save</Text>
+          <TouchableOpacity style={styles.nextButton} onPress={saveVideo}>
+            <MaterialIcons name="arrow-forward" size={24} color="#fff" />
+            <Text style={styles.nextButtonText}>Next</Text>
           </TouchableOpacity>
         </View>
       </View>
