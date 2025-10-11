@@ -39,6 +39,7 @@ class MediaPost(Base):
     # Relationships
     comments = relationship("Comment", back_populates="media_post", cascade="all, delete-orphan")
     likes = relationship("MediaLike", back_populates="media_post", cascade="all, delete-orphan")
+    multiple_likes = relationship("MultipleLike", back_populates="media_post", cascade="all, delete-orphan")
 
 class Comment(Base):
     __tablename__ = "comments"
@@ -90,6 +91,25 @@ class MediaLike(Base):
     # Relationships
     media_post = relationship("MediaPost", back_populates="likes")
 
+class MultipleLike(Base):
+    __tablename__ = "multiple_likes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Foreign keys
+    media_post_id = Column(Integer, ForeignKey("media_posts.id"), nullable=False)
+    
+    # User information (simplified - in a real app you'd have a User model)
+    user_name = Column(String, nullable=False, default="Anonymous")
+    
+    # Count of multiple likes
+    like_count = Column(Integer, default=1)
+    
+    # Relationships
+    media_post = relationship("MediaPost", back_populates="multiple_likes")
+
 # Create tables
 Base.metadata.create_all(bind=engine)
 
@@ -140,6 +160,16 @@ class MediaLikeResponse(BaseModel):
 
 class MediaLikeCreate(BaseModel):
     user_name: Optional[str] = "Anonymous"
+
+class MultipleLikeResponse(BaseModel):
+    id: int
+    user_name: str
+    like_count: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
 class CommentResponse(BaseModel):
     id: int
@@ -649,7 +679,7 @@ async def get_comment_likes(comment_id: int, db: Session = Depends(get_db)):
 @app.post("/api/media/{media_id}/like")
 async def like_media(media_id: int, like_data: MediaLikeCreate, db: Session = Depends(get_db)):
     """
-    Like a media post
+    Like a media post. If user already liked, increment multiple_likes counter.
     """
     # Verify media post exists
     media_post = db.query(MediaPost).filter(MediaPost.id == media_id).first()
@@ -663,9 +693,35 @@ async def like_media(media_id: int, like_data: MediaLikeCreate, db: Session = De
     ).first()
     
     if existing_like:
-        raise HTTPException(status_code=400, detail="Media already liked by this user")
+        # User already liked, increment multiple_likes counter
+        multiple_like = db.query(MultipleLike).filter(
+            MultipleLike.media_post_id == media_id,
+            MultipleLike.user_name == like_data.user_name
+        ).first()
+        
+        if multiple_like:
+            # Increment existing multiple like count
+            multiple_like.like_count += 1
+            multiple_like.updated_at = datetime.utcnow()
+        else:
+            # Create new multiple like record
+            multiple_like = MultipleLike(
+                media_post_id=media_id,
+                user_name=like_data.user_name,
+                like_count=1
+            )
+            db.add(multiple_like)
+        
+        db.commit()
+        db.refresh(multiple_like)
+        
+        return {
+            "message": "Multiple like recorded successfully", 
+            "like_count": multiple_like.like_count,
+            "multiple_like_id": multiple_like.id
+        }
     
-    # Create new like
+    # Create new like (first time liking)
     like = MediaLike(
         media_post_id=media_id,
         user_name=like_data.user_name
@@ -680,9 +736,32 @@ async def like_media(media_id: int, like_data: MediaLikeCreate, db: Session = De
 @app.delete("/api/media/{media_id}/like")
 async def unlike_media(media_id: int, user_name: str, db: Session = Depends(get_db)):
     """
-    Unlike a media post
+    Unlike a media post. If user has multiple likes, decrement counter first.
     """
-    # Find the like
+    # Check if user has multiple likes
+    multiple_like = db.query(MultipleLike).filter(
+        MultipleLike.media_post_id == media_id,
+        MultipleLike.user_name == user_name
+    ).first()
+    
+    if multiple_like:
+        # User has multiple likes, decrement counter
+        if multiple_like.like_count > 1:
+            multiple_like.like_count -= 1
+            multiple_like.updated_at = datetime.utcnow()
+            db.commit()
+            db.refresh(multiple_like)
+            return {
+                "message": "Multiple like count decremented", 
+                "remaining_likes": multiple_like.like_count
+            }
+        else:
+            # Remove the multiple like record when count reaches 0
+            db.delete(multiple_like)
+            db.commit()
+            return {"message": "Multiple like record removed"}
+    
+    # Find the regular like
     like = db.query(MediaLike).filter(
         MediaLike.media_post_id == media_id,
         MediaLike.user_name == user_name
