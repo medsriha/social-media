@@ -751,11 +751,17 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
           <View style={styles.recordingIndicator}>
             {isRecording && <View style={styles.recordingDot} />}
             <Text style={styles.recordingText}>
-              {isRecording ? 'Recording' : 'Paused'} {formatTime(recordingTime)}
+              {formatTime(recordingTime)}
             </Text>
             {isPaused && videoSegments.length > 0 && (
               <Text style={styles.segmentText}>• {videoSegments.length} segment{videoSegments.length > 1 ? 's' : ''}</Text>
             )}
+          </View>
+        )}
+        
+        {isPaused && (
+          <View style={styles.pauseOverlay}>
+            <MaterialIcons name="pause" size={80} color="rgba(255,255,255,0.9)" />
           </View>
         )}
       </CameraView>
@@ -907,30 +913,38 @@ const styles = StyleSheet.create({
   recordingIndicator: {
     position: 'absolute',
     top: 60,
-    right: 20,
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 6,
+    borderRadius: 18,
   },
   recordingDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: '#ff0000',
-    marginRight: 8,
+    marginRight: 6,
   },
   recordingText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   segmentText: {
     color: '#fff',
-    fontSize: 12,
-    marginLeft: 8,
+    fontSize: 10,
+    marginLeft: 6,
+  },
+  pauseOverlay: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -40 }, { translateY: -100 }],
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   resumeButton: {
     width: 50,

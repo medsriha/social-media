@@ -585,9 +585,6 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
     const heights = [220, 280, 250, 300, 240, 270];
     const itemHeight = heights[index % heights.length];
 
-    // Get user name from caption or use default
-    const userName = item.caption?.split('\n')[0] || '';
-
     return (
       <View style={[styles.videoItem, { height: itemHeight }]}>
         <TouchableOpacity
@@ -609,21 +606,6 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
           )}
           
           {/* Gradient overlay for better text visibility */}
-          <View style={styles.gradientOverlay} />
-          
-          {/* User info overlay */}
-          {userName && (
-            <View style={styles.userInfoOverlay}>
-              <View style={styles.userInfo}>
-                <Text style={styles.userName} numberOfLines={1}>{userName}</Text>
-              </View>
-              {item.published && (
-                <View style={styles.verifiedBadge}>
-                  <MaterialIcons name="verified" size={14} color="#fff" />
-                </View>
-              )}
-            </View>
-          )}
           
           {/* Public/Private badge for gallery - only icon, no text */}
           {!isInDeleteMode && (
@@ -653,6 +635,14 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
               >
                 <MaterialIcons name="chat-bubble-outline" size={22} color="#fff" />
                 <Text style={styles.socialActionCount}>0</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.socialActionButton}
+                activeOpacity={0.7}
+              >
+                <MaterialIcons name="attach-money" size={22} color="#fff" />
+                <Text style={styles.socialActionCount}>$0</Text> 
               </TouchableOpacity>
             </View>
           )}
@@ -813,7 +803,6 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <MaterialIcons name="arrow-back" size={28} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Gallery</Text>
         <View style={styles.headerSpacer} />
       </View>
 
