@@ -572,11 +572,9 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
         <View style={styles.photoPreviewControls}>
           <TouchableOpacity style={styles.retakeButton} onPress={discardPhoto}>
             <MaterialIcons name="refresh" size={24} color="#fff" />
-            <Text style={styles.retakeButtonText}>Retake</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.nextButton} onPress={savePhoto}>
             <MaterialIcons name="arrow-forward" size={24} color="#fff" />
-            <Text style={styles.nextButtonText}>Next</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -602,11 +600,9 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
         <View style={styles.videoPreviewControls}>
           <TouchableOpacity style={styles.retakeButton} onPress={discardVideo}>
             <MaterialIcons name="refresh" size={24} color="#fff" />
-            <Text style={styles.retakeButtonText}>Retake</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.nextButton} onPress={saveVideo}>
             <MaterialIcons name="arrow-forward" size={24} color="#fff" />
-            <Text style={styles.nextButtonText}>Next</Text>
           </TouchableOpacity>
         </View>
       </View>
