@@ -8,16 +8,122 @@ import {
   Platform,
   Image,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { Video, ResizeMode } from 'expo-av';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { MediaEditorScreen } from '../components/MediaEditorScreen';
 import { saveMediaMetadata } from '../utils/mediaStorage';
 import { uploadMedia } from '../utils/api';
+
+// Filter definitions
+interface CameraFilter {
+  id: string;
+  name: string;
+  style: {
+    backgroundColor?: string;
+    opacity?: number;
+  };
+  // Image manipulator matrix for photos (brightness, contrast, saturation, etc)
+  imageManipulation?: {
+    brightness?: number;
+    contrast?: number;
+    saturation?: number;
+  };
+}
+
+const FILTERS: CameraFilter[] = [
+  {
+    id: 'normal',
+    name: 'Normal',
+    style: {},
+  },
+  {
+    id: 'bw',
+    name: 'B&W',
+    style: {
+      backgroundColor: '#000',
+      opacity: 0.5,
+    },
+    imageManipulation: {
+      saturation: -1,
+    },
+  },
+  {
+    id: 'sepia',
+    name: 'Sepia',
+    style: {
+      backgroundColor: '#704214',
+      opacity: 0.4,
+    },
+    imageManipulation: {
+      saturation: -0.3,
+      brightness: 0.1,
+    },
+  },
+  {
+    id: 'vintage',
+    name: 'Vintage',
+    style: {
+      backgroundColor: '#ff6b35',
+      opacity: 0.3,
+    },
+    imageManipulation: {
+      contrast: 0.1,
+      saturation: -0.2,
+    },
+  },
+  {
+    id: 'cool',
+    name: 'Cool',
+    style: {
+      backgroundColor: '#4A90E2',
+      opacity: 0.25,
+    },
+    imageManipulation: {
+      brightness: -0.05,
+    },
+  },
+  {
+    id: 'warm',
+    name: 'Warm',
+    style: {
+      backgroundColor: '#FF9500',
+      opacity: 0.3,
+    },
+    imageManipulation: {
+      brightness: 0.05,
+    },
+  },
+  {
+    id: 'dramatic',
+    name: 'Dramatic',
+    style: {
+      backgroundColor: '#000',
+      opacity: 0.3,
+    },
+    imageManipulation: {
+      contrast: 0.3,
+      brightness: -0.1,
+    },
+  },
+  {
+    id: 'bright',
+    name: 'Bright',
+    style: {
+      backgroundColor: '#fff',
+      opacity: 0.2,
+    },
+    imageManipulation: {
+      brightness: 0.2,
+    },
+  },
+];
 
 interface MediaRecorderScreenProps {
   onBack?: () => void;
@@ -47,6 +153,8 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
   const [editorMediaType, setEditorMediaType] = useState<'photo' | 'video'>('photo');
   const [originalVideoUri, setOriginalVideoUri] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<CameraFilter>(FILTERS[0]);
+  const [showFilters, setShowFilters] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -97,15 +205,56 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     setMode((current) => (current === 'photo' ? 'video' : 'photo'));
   };
 
+  const applyFilterToPhoto = async (photoUri: string): Promise<string> => {
+    // If no filter applied, return original
+    if (selectedFilter.id === 'normal') {
+      return photoUri;
+    }
+
+    try {
+      const actions: any[] = [];
+      
+      // Apply filter adjustments if available
+      if (selectedFilter.imageManipulation) {
+        const manipulation = selectedFilter.imageManipulation;
+        
+        // Note: expo-image-manipulator doesn't support all adjustments directly
+        // We'll apply what we can and use the overlay for the rest
+        if (manipulation.brightness !== undefined) {
+          // Brightness adjustment (not directly supported, will use overlay)
+        }
+        
+        if (manipulation.saturation !== undefined) {
+          // Saturation adjustment (not directly supported, will use overlay)
+        }
+        
+        if (manipulation.contrast !== undefined) {
+          // Contrast adjustment (not directly supported, will use overlay)
+        }
+      }
+
+      // For now, we'll return the original and rely on the filter overlay
+      // In production, you could use more advanced image processing libraries
+      return photoUri;
+    } catch (error) {
+      console.error('Error applying filter:', error);
+      return photoUri;
+    }
+  };
+
   const takePhoto = async () => {
     if (cameraRef.current) {
       try {
+        setShowFilters(false); // Close filter selector when taking photo
+        
         const photo = await cameraRef.current.takePictureAsync({
           quality: 1,
         });
         
         if (photo && photo.uri) {
-          setPhotoUri(photo.uri);
+          // Apply filter if needed
+          const filteredUri = await applyFilterToPhoto(photo.uri);
+          setPhotoUri(filteredUri);
         }
       } catch (error) {
         console.error('Error taking photo:', error);
@@ -119,6 +268,7 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
       try {
         setIsRecording(true);
         setIsPaused(false);
+        setShowFilters(false); // Close filter selector when recording starts
         
         // Resume timer from where it left off
         timerRef.current = setInterval(() => {
@@ -621,6 +771,19 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
       <View style={styles.container}>
         <StatusBar style="light" />
         <Image source={{ uri: photoUri }} style={styles.preview} resizeMode="contain" />
+        {/* Apply filter overlay to preview */}
+        {selectedFilter.id !== 'normal' && selectedFilter.style.backgroundColor && (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor: selectedFilter.style.backgroundColor,
+                opacity: selectedFilter.style.opacity || 0,
+              },
+            ]}
+            pointerEvents="none"
+          />
+        )}
         <View style={styles.photoPreviewControls}>
           <TouchableOpacity style={styles.deleteButton} onPress={discardPhoto}>
             <MaterialIcons name="delete" size={24} color="#fff" />
@@ -662,6 +825,29 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     <View style={styles.container}>
       <StatusBar style="light" />
       <CameraView style={styles.camera} facing={facing} ref={cameraRef} mode={mode === 'photo' ? 'picture' : 'video'}>
+        {/* Filter overlay for real-time preview */}
+        {selectedFilter.id !== 'normal' && selectedFilter.style.backgroundColor && (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor: selectedFilter.style.backgroundColor,
+                opacity: selectedFilter.style.opacity || 0,
+              },
+            ]}
+            pointerEvents="none"
+          />
+        )}
+
+        {/* Dismissible overlay - tap anywhere to close filters */}
+        {showFilters && !isRecording && !isPaused && (
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowFilters(false)}
+          />
+        )}
+
         <View style={styles.topControls}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
             <MaterialIcons name="arrow-back" size={28} color="#fff" />
@@ -687,6 +873,64 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
           <View style={styles.editingIndicator}>
             <MaterialIcons name="edit" size={16} color="#fff" />
             <Text style={styles.editingText}>Adding segments to existing video</Text>
+          </View>
+        )}
+
+        {/* Filter selection button */}
+        {!isRecording && !isPaused && (
+          <TouchableOpacity
+            style={styles.filterButton}
+            onPress={() => setShowFilters(!showFilters)}
+          >
+            <MaterialIcons name="filter" size={24} color="#fff" />
+            <Text style={styles.filterButtonText}>{selectedFilter.name}</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Filter selector */}
+        {showFilters && !isRecording && !isPaused && (
+          <View style={styles.filterSelector}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {FILTERS.map((filter) => (
+                <TouchableOpacity
+                  key={filter.id}
+                  style={[
+                    styles.filterOption,
+                    selectedFilter.id === filter.id && styles.filterOptionActive,
+                  ]}
+                  onPress={() => {
+                    setSelectedFilter(filter);
+                    // Keep filter list open for easy comparison
+                  }}
+                >
+                  <View style={styles.filterPreview}>
+                    {filter.id === 'normal' ? (
+                      // Show icon for "No Filter" option
+                      <View style={styles.filterPreviewNoFilter}>
+                        <MaterialIcons name="filter-none" size={32} color="#999" />
+                      </View>
+                    ) : (
+                      <>
+                        <View style={styles.filterPreviewImage} />
+                        {filter.style.backgroundColor && (
+                          <View
+                            style={[
+                              StyleSheet.absoluteFill,
+                              {
+                                backgroundColor: filter.style.backgroundColor,
+                                opacity: filter.style.opacity || 0,
+                                borderRadius: 8,
+                              },
+                            ]}
+                          />
+                        )}
+                      </>
+                    )}
+                  </View>
+                  <Text style={styles.filterName}>{filter.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         )}
         
@@ -1060,6 +1304,70 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',
+  },
+  filterButton: {
+    position: 'absolute',
+    top: 110,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  filterButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filterSelector: {
+    position: 'absolute',
+    bottom: 140,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 10,
+  },
+  filterOption: {
+    alignItems: 'center',
+    marginHorizontal: 6,
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  filterOptionActive: {
+    backgroundColor: 'rgba(255,0,80,0.6)',
+    borderWidth: 2,
+    borderColor: '#ff0050',
+  },
+  filterPreview: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  filterPreviewImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#444',
+  },
+  filterPreviewNoFilter: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#666',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+  },
+  filterName: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '500',
   },
 });
 
