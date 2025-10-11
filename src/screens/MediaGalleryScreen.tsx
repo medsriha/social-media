@@ -63,6 +63,8 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
   const [deleteMode, setDeleteMode] = useState<string | null>(null); // Track which item is in delete mode
   const [likesCounts, setLikesCounts] = useState<Map<number, number>>(new Map());
   const [commentCounts, setCommentCounts] = useState<Map<number, number>>(new Map());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const videoRef = useRef<Video>(null);
 
   useEffect(() => {
@@ -265,55 +267,109 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            await performDeleteMedia(media);
+          },
+        },
+      ]
+    );
+  };
+
+  const performDeleteMedia = async (media: MediaItem) => {
+    try {
+      // If published, try to delete from backend database
+      if (media.published) {
+        try {
+          // Load metadata to get backend ID
+          const metadata = await loadMediaMetadata(media.uri);
+          
+          if (metadata && metadata.id) {
+            // Delete from backend database
+            console.log('🗑️ Deleting from backend, ID:', metadata.id);
+            await deleteMediaFromBackend(metadata.id);
+            console.log('✅ Deleted from backend database');
+          } else {
+            console.log('⚠️ No backend ID found, skipping backend deletion');
+          }
+        } catch (backendError) {
+          console.error('Error deleting from backend:', backendError);
+          // Continue with local deletion even if backend fails
+          Alert.alert(
+            'Warning',
+            'Could not delete from server, but will delete locally. The media may still appear in others\' feeds.'
+          );
+        }
+      }
+      
+      // Delete the local media file
+      await FileSystem.deleteAsync(media.uri);
+      
+      // Try to delete metadata file if it exists
+      try {
+        const extension = media.type === 'photo' ? /\.(jpg|jpeg|png)$/ : /\.mp4$/;
+        const metadataUri = media.uri.replace(extension, '.json');
+        const metadataInfo = await FileSystem.getInfoAsync(metadataUri);
+        if (metadataInfo.exists) {
+          await FileSystem.deleteAsync(metadataUri);
+        }
+      } catch (metaError) {
+        // Metadata doesn't exist or couldn't be deleted, that's okay
+        console.log('Metadata file not found or already deleted');
+      }
+      
+      // Use functional update to ensure we have the latest state
+      setMediaItems((currentMedia) => currentMedia.filter((m) => m.uri !== media.uri));
+      if (selectedMedia?.uri === media.uri) {
+        setSelectedMedia(null);
+      }
+    } catch (error) {
+      console.error(`Error deleting ${media.type}:`, error);
+      Alert.alert('Error', `Failed to delete ${media.type}`);
+    }
+  };
+
+  const deleteSelectedMedia = async () => {
+    const selectedCount = selectedItems.size;
+    const selectedMediaItems = mediaItems.filter(item => {
+      const itemKey = `${item.filename}-${item.timestamp}`;
+      return selectedItems.has(itemKey);
+    });
+
+    const publicCount = selectedMediaItems.filter(item => item.published).length;
+    const privateCount = selectedCount - publicCount;
+
+    let title = 'Delete Selected Media';
+    let message = `Are you sure you want to delete ${selectedCount} media item${selectedCount > 1 ? 's' : ''}?`;
+    
+    if (publicCount > 0) {
+      title = '⚠️ Delete Selected Media';
+      message = `You're about to delete ${selectedCount} media item${selectedCount > 1 ? 's' : ''} (${publicCount} public, ${privateCount} private). Public media will be removed permanently and may still appear in others' feeds. Are you sure?`;
+    }
+
+    Alert.alert(
+      title,
+      message,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
             try {
-              // If published, try to delete from backend database
-              if (media.published) {
-                try {
-                  // Load metadata to get backend ID
-                  const metadata = await loadMediaMetadata(media.uri);
-                  
-                  if (metadata && metadata.id) {
-                    // Delete from backend database
-                    console.log('🗑️ Deleting from backend, ID:', metadata.id);
-                    await deleteMediaFromBackend(metadata.id);
-                    console.log('✅ Deleted from backend database');
-                  } else {
-                    console.log('⚠️ No backend ID found, skipping backend deletion');
-                  }
-                } catch (backendError) {
-                  console.error('Error deleting from backend:', backendError);
-                  // Continue with local deletion even if backend fails
-                  Alert.alert(
-                    'Warning',
-                    'Could not delete from server, but will delete locally. The media may still appear in others\' feeds.'
-                  );
-                }
+              // Delete all selected media items
+              for (const media of selectedMediaItems) {
+                await performDeleteMedia(media);
               }
               
-              // Delete the local media file
-              await FileSystem.deleteAsync(media.uri);
-              
-              // Try to delete metadata file if it exists
-              try {
-                const extension = media.type === 'photo' ? /\.(jpg|jpeg|png)$/ : /\.mp4$/;
-                const metadataUri = media.uri.replace(extension, '.json');
-                const metadataInfo = await FileSystem.getInfoAsync(metadataUri);
-                if (metadataInfo.exists) {
-                  await FileSystem.deleteAsync(metadataUri);
-                }
-              } catch (metaError) {
-                // Metadata doesn't exist or couldn't be deleted, that's okay
-                console.log('Metadata file not found or already deleted');
-              }
-              
-              // Use functional update to ensure we have the latest state
-              setMediaItems((currentMedia) => currentMedia.filter((m) => m.uri !== media.uri));
-              if (selectedMedia?.uri === media.uri) {
-                setSelectedMedia(null);
-              }
+              // Clear selection and exit selection mode
+              setSelectedItems(new Set());
+              setIsSelectionMode(false);
+
             } catch (error) {
-              console.error(`Error deleting ${media.type}:`, error);
-              Alert.alert('Error', `Failed to delete ${media.type}`);
+              console.error('Error deleting selected media:', error);
+              Alert.alert('Error', 'Failed to delete some media items');
             }
           },
         },
@@ -321,8 +377,43 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
     );
   };
 
+  const toggleSelection = (item: MediaItem) => {
+    const itemKey = `${item.filename}-${item.timestamp}`;
+    const newSelectedItems = new Set(selectedItems);
+    
+    if (newSelectedItems.has(itemKey)) {
+      newSelectedItems.delete(itemKey);
+    } else {
+      newSelectedItems.add(itemKey);
+    }
+    
+    setSelectedItems(newSelectedItems);
+    
+    // Exit selection mode if no items are selected
+    if (newSelectedItems.size === 0) {
+      setIsSelectionMode(false);
+    }
+  };
+
+  const selectAllItems = () => {
+    const allItemKeys = new Set(mediaItems.map(item => `${item.filename}-${item.timestamp}`));
+    setSelectedItems(allItemKeys);
+  };
+
+  const clearSelection = () => {
+    setSelectedItems(new Set());
+    setIsSelectionMode(false);
+  };
+
+  const enterSelectionMode = () => {
+    setIsSelectionMode(true);
+    setDeleteMode(null); // Exit any single delete mode
+  };
+
   const handleBack = () => {
-    if (selectedMedia) {
+    if (isSelectionMode) {
+      clearSelection();
+    } else if (selectedMedia) {
       setSelectedMedia(null);
       setCurrentSegmentIndex(0);
       setIsCaptionExpanded(false);
@@ -594,6 +685,7 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
   const renderMediaItem = ({ item, index }: { item: MediaItem; index: number }) => {
     const itemKey = `${item.filename}-${item.timestamp}`;
     const isInDeleteMode = deleteMode === itemKey;
+    const isSelected = selectedItems.has(itemKey);
 
     const handleDelete = () => {
       setDeleteMode(null);
@@ -601,7 +693,11 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
     };
 
     const handlePress = () => {
-      if (isInDeleteMode) {
+      if (isSelectionMode) {
+        // In selection mode, toggle selection
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        toggleSelection(item);
+      } else if (isInDeleteMode) {
         setDeleteMode(null);
       } else {
         setSelectedMedia(item);
@@ -613,7 +709,15 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
     const handleLongPress = () => {
       // Trigger haptic feedback
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      setDeleteMode(itemKey);
+      
+      if (isSelectionMode) {
+        // In selection mode, toggle selection
+        toggleSelection(item);
+      } else {
+        // Enter selection mode
+        enterSelectionMode();
+        toggleSelection(item);
+      }
     };
 
     // Create varying heights for masonry effect
@@ -642,8 +746,19 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
           
           {/* Gradient overlay for better text visibility */}
           
+          {/* Selection indicator */}
+          {isSelectionMode && (
+            <View style={[styles.selectionIndicator, isSelected && styles.selectionIndicatorSelected]}>
+              <MaterialIcons 
+                name={isSelected ? "check-circle" : "radio-button-unchecked"} 
+                size={24} 
+                color={isSelected ? "#007AFF" : "#fff"} 
+              />
+            </View>
+          )}
+
           {/* Public/Private badge for gallery - only icon, no text */}
-          {!isInDeleteMode && (
+          {!isInDeleteMode && !isSelectionMode && (
             <View style={styles.galleryStatusBadge}>
               <MaterialIcons 
                 name={item.published ? "public" : "lock"} 
@@ -684,6 +799,11 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
                 <Text style={styles.socialActionCount}>$0</Text> 
               </TouchableOpacity>
             </View>
+          )}
+
+          {/* Selection overlay */}
+          {isSelectionMode && isSelected && (
+            <View style={styles.selectionOverlay} />
           )}
 
           {/* Delete mode overlay - shows when long pressed */}
@@ -841,7 +961,35 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <MaterialIcons name="arrow-back" size={28} color="#fff" />
         </TouchableOpacity>
-        <View style={styles.headerSpacer} />
+        
+        {isSelectionMode ? (
+          <View style={styles.selectionHeader}>
+            <Text style={styles.selectionCount}>
+              {selectedItems.size} selected
+            </Text>
+            <View style={styles.selectionActions}>
+              <TouchableOpacity
+                style={styles.selectionActionButton}
+                onPress={selectAllItems}
+                activeOpacity={0.7}
+              >
+                <MaterialIcons name="select-all" size={24} color="#fff" />
+              </TouchableOpacity>
+              
+              {selectedItems.size > 0 && (
+                <TouchableOpacity
+                  style={styles.selectionActionButton}
+                  onPress={deleteSelectedMedia}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="delete" size={24} color="#ff3b30" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        ) : (
+          <View style={styles.headerSpacer} />
+        )}
       </View>
 
       {isLoading ? (
@@ -1260,6 +1408,60 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '600',
+  },
+  selectionHeader: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+  selectionCount: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  selectionActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  selectionActionButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  selectionIndicator: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  selectionIndicatorSelected: {
+    backgroundColor: 'rgba(0, 122, 255, 0.2)',
+    borderWidth: 2,
+    borderColor: '#007AFF',
+  },
+  selectionOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 122, 255, 0.2)',
+    borderWidth: 3,
+    borderColor: '#007AFF',
+    borderRadius: 16,
+    zIndex: 5,
   },
 });
 
