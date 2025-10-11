@@ -130,9 +130,7 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
           if (item.id) {
             try {
               const comments = await getMediaComments(item.id, 0, 1000); // Get all to count
-              const totalCount = comments.reduce((total, comment) => {
-                return total + 1 + (comment.replies?.length || 0);
-              }, 0);
+              const totalCount = comments.length; // Only count top-level comments, not replies
               counts.set(item.id, totalCount);
               previews.set(item.id, comments.slice(0, 3)); // Store first 3 comments for preview
             } catch (error) {
