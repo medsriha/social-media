@@ -29,6 +29,7 @@ export interface MediaPost {
   timestamp: number;
   published: boolean;
   url: string;
+  likes_count: number;
 }
 
 export interface UploadMediaParams {
@@ -75,6 +76,17 @@ export interface UpdateCommentParams {
 }
 
 export interface LikeCommentParams {
+  user_name?: string;
+}
+
+// Media Like types
+export interface MediaLike {
+  id: number;
+  user_name: string;
+  created_at: string;
+}
+
+export interface LikeMediaParams {
   user_name?: string;
 }
 
@@ -471,6 +483,102 @@ export const getCommentLikes = async (commentId: number): Promise<CommentLike[]>
     return data;
   } catch (error) {
     console.error('Error fetching comment likes:', error);
+    throw error;
+  }
+};
+
+// =============================================================================
+// MEDIA LIKES API FUNCTIONS
+// =============================================================================
+
+/**
+ * Like a media post
+ */
+export const likeMedia = async (
+  mediaId: number, 
+  params: LikeMediaParams = {}
+): Promise<{ message: string; like_id: number }> => {
+  try {
+    console.log('❤️ Liking media:', mediaId);
+    const response = await fetch(`${API_BASE_URL}/api/media/${mediaId}/like`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_name: params.user_name || 'Anonymous',
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to like media: ${error}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Media liked');
+    return data;
+  } catch (error) {
+    console.error('Error liking media:', error);
+    throw error;
+  }
+};
+
+/**
+ * Unlike a media post
+ */
+export const unlikeMedia = async (
+  mediaId: number, 
+  userName: string = 'Anonymous'
+): Promise<{ message: string }> => {
+  try {
+    console.log('💔 Unliking media:', mediaId);
+    const response = await fetch(
+      `${API_BASE_URL}/api/media/${mediaId}/like?user_name=${encodeURIComponent(userName)}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to unlike media: ${error}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Media unliked');
+    return data;
+  } catch (error) {
+    console.error('Error unliking media:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all likes for a media post
+ */
+export const getMediaLikes = async (mediaId: number): Promise<MediaLike[]> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/media/${mediaId}/likes`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to fetch media likes: ${error}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error fetching media likes:', error);
     throw error;
   }
 };
