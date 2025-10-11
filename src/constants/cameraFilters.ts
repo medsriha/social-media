@@ -1,5 +1,14 @@
 // Camera filter definitions for MediaRecorderScreen
 
+export interface CustomFilterValues {
+  brightness: number;    // -1 to 1
+  contrast: number;      // -1 to 1
+  saturation: number;    // -1 to 1
+  warmth: number;        // -1 to 1 (orange/blue tint)
+  structure: number;     // -1 to 1 (sharpness/blur effect)
+  tint: string;          // hex color for color overlay
+}
+
 export interface CameraFilter {
   id: string;
   name: string;
@@ -13,6 +22,8 @@ export interface CameraFilter {
     contrast?: number;
     saturation?: number;
   };
+  isCustom?: boolean;
+  customValues?: CustomFilterValues;
 }
 
 export const CAMERA_FILTERS: CameraFilter[] = [
@@ -99,6 +110,20 @@ export const CAMERA_FILTERS: CameraFilter[] = [
     },
     imageManipulation: {
       brightness: 0.2,
+    },
+  },
+  {
+    id: 'custom',
+    name: 'Custom',
+    style: {},
+    isCustom: true,
+    customValues: {
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      warmth: 0,
+      structure: 0,
+      tint: '#000000',
     },
   },
 ];
