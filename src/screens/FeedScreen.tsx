@@ -18,7 +18,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { getAllMedia, API_BASE_URL, MediaPost, getMediaComments, CommentWithReplies } from '../utils/api';
+import { getAllMedia, API_BASE_URL, MediaPost, getMediaComments, CommentWithReplies, likeMedia, unlikeMedia, getMediaLikes, MediaLike } from '../utils/api';
 import { CommentsSection } from '../components/CommentsSection';
 import { CommentPreview } from '../components/CommentPreview';
 
@@ -42,6 +42,8 @@ interface MediaItem {
   emojis: EmojiOverlay[];
   published: boolean;
   segments?: string[];
+  likes_count: number;
+  is_liked?: boolean;
 }
 
 interface FeedScreenProps {
@@ -64,6 +66,8 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
   const [showCommentsFor, setShowCommentsFor] = useState<number | null>(null);
   const [commentPreviews, setCommentPreviews] = useState<Map<number, CommentWithReplies[]>>(new Map());
   const [showPreviewFor, setShowPreviewFor] = useState<number | null>(null);
+  const [likesCounts, setLikesCounts] = useState<Map<number, number>>(new Map());
+  const [userLikes, setUserLikes] = useState<Set<number>>(new Set());
   const lastTapRef = useRef<number>(0);
   const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   const doubleTapDelay = 300; // milliseconds
@@ -91,13 +95,16 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
           caption: post.caption || '',
           emojis,
           published: post.published,
+          likes_count: post.likes_count || 0,
+          is_liked: false, // Will be updated when we check user likes
         };
       });
 
       setMediaItems(transformedMedia);
       
-      // Load comment counts for each media
+      // Load comment counts and likes data for each media
       await loadCommentCounts(transformedMedia);
+      await loadLikesData(transformedMedia);
     } catch (error) {
       console.error('Error loading public media from backend:', error);
       Alert.alert(
@@ -141,6 +148,40 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
       setCommentPreviews(previews);
     } catch (error) {
       console.error('Error loading comment counts:', error);
+    }
+  };
+
+  const loadLikesData = async (mediaItems: MediaItem[]) => {
+    try {
+      const likesCountsMap = new Map<number, number>();
+      const userLikesSet = new Set<number>();
+      
+      // Load likes data for each media item
+      await Promise.all(
+        mediaItems.map(async (item) => {
+          if (item.id) {
+            try {
+              const likes = await getMediaLikes(item.id);
+              likesCountsMap.set(item.id, likes.length);
+              
+              // Check if current user has liked this media
+              // For now, we'll use a simple check - in a real app, you'd check against the actual user ID
+              const currentUserLiked = likes.some(like => like.user_name === 'Anonymous');
+              if (currentUserLiked) {
+                userLikesSet.add(item.id);
+              }
+            } catch (error) {
+              console.error(`Error loading likes for media ${item.id}:`, error);
+              likesCountsMap.set(item.id, item.likes_count || 0);
+            }
+          }
+        })
+      );
+      
+      setLikesCounts(likesCountsMap);
+      setUserLikes(userLikesSet);
+    } catch (error) {
+      console.error('Error loading likes data:', error);
     }
   };
 
@@ -208,21 +249,48 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
     });
   }, []);
 
-  const handleLike = useCallback((itemId: number | string | undefined) => {
-    if (!itemId) return;
+  const handleLike = useCallback(async (itemId: number | string | undefined) => {
+    if (!itemId || typeof itemId !== 'number') return;
     
-    setLikedItems((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(itemId)) {
-        newSet.delete(itemId);
+    try {
+      const isCurrentlyLiked = userLikes.has(itemId);
+      
+      if (isCurrentlyLiked) {
+        // Unlike the media
+        await unlikeMedia(itemId, 'Anonymous');
+        setUserLikes(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(itemId);
+          return newSet;
+        });
+        setLikesCounts(prev => {
+          const newMap = new Map(prev);
+          const currentCount = newMap.get(itemId) || 0;
+          newMap.set(itemId, Math.max(0, currentCount - 1));
+          return newMap;
+        });
       } else {
-        newSet.add(itemId);
+        // Like the media
+        await likeMedia(itemId, { user_name: 'Anonymous' });
+        setUserLikes(prev => {
+          const newSet = new Set(prev);
+          newSet.add(itemId);
+          return newSet;
+        });
+        setLikesCounts(prev => {
+          const newMap = new Map(prev);
+          const currentCount = newMap.get(itemId) || 0;
+          newMap.set(itemId, currentCount + 1);
+          return newMap;
+        });
         // Trigger haptic feedback for like
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
-      return newSet;
-    });
-  }, []);
+    } catch (error) {
+      console.error('Error toggling like:', error);
+      Alert.alert('Error', 'Failed to update like. Please try again.');
+    }
+  }, [userLikes]);
 
   const handleOpenComments = useCallback((mediaId: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -231,9 +299,10 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
 
   const handleCloseComments = useCallback(() => {
     setShowCommentsFor(null);
-    // Reload comment counts when comments modal is closed
+    // Reload comment counts and likes data when comments modal is closed
     if (mediaItems.length > 0) {
       loadCommentCounts(mediaItems);
+      loadLikesData(mediaItems);
     }
   }, [mediaItems]);
 
@@ -261,13 +330,7 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
     if (timeSinceLastTap < doubleTapDelay) {
       // Double tap detected - trigger like and stronger vibration
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      setLikedItems((prev) => {
-        const newSet = new Set(prev);
-        if (!newSet.has(itemId)) {
-          newSet.add(itemId);
-        }
-        return newSet;
-      });
+      handleLike(itemId);
       lastTapRef.current = 0; // Reset
     } else {
       // Potential single tap - wait to see if another tap comes
@@ -284,10 +347,11 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
   }, [doubleTapDelay, toggleMute, showPreviewFor]);
 
   const renderMediaItem = ({ item, index }: { item: MediaItem; index: number }) => {
-    const isLiked = item.id ? likedItems.has(item.id) : false;
+    const isLiked = item.id ? userLikes.has(item.id) : false;
     const isMuted = item.id ? mutedVideos.has(item.id) : true; // Videos start muted by default
     const isCaptionExpanded = item.id ? expandedCaptions.has(item.id) : false;
     const commentCount = item.id ? commentCounts.get(item.id) || 0 : 0;
+    const likesCount = item.id ? likesCounts.get(item.id) || 0 : 0;
     
     return (
     <View style={styles.videoContainer}>
@@ -387,7 +451,7 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
             size={32} 
             color={isLiked ? "#ff0050" : "#fff"} 
           />
-          <Text style={styles.actionText}>Like</Text>
+          <Text style={styles.actionText}>{likesCount > 0 ? likesCount : '—'}</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
@@ -395,12 +459,12 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
           onPress={() => item.id && handleOpenComments(item.id)}
         >
           <MaterialIcons name="comment" size={32} color="#fff" />
-          <Text style={styles.actionText}>{commentCount || 'Comment'}</Text>
+          <Text style={styles.actionText}>{commentCount > 0 ? commentCount : '—'}</Text>
         </TouchableOpacity>
         
         <TouchableOpacity style={styles.actionButton}>
           <MaterialIcons name="share" size={32} color="#fff" />
-          <Text style={styles.actionText}>Share</Text>
+          <Text style={styles.actionText}>0</Text>
         </TouchableOpacity>
       </View>
     </View>
