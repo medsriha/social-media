@@ -274,43 +274,81 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
   };
 
   const handleBackPress = () => {
-    // If on publishing step, go back to editing
+    console.log('handleBackPress called, currentStep:', currentStep);
+    // If on publishing step, check for changes before going back to editing
     if (currentStep === 'publishing') {
-      setCurrentStep('editing');
+      const hasChanges = caption.trim() !== initialCaption || filters.selectedFilter.id !== 'normal';
+      console.log('Publishing step, hasChanges:', hasChanges);
+      
+      if (hasChanges) {
+        console.log('Showing save changes alert');
+        Alert.alert(
+          'Save Your Changes?',
+          'You have unsaved changes. What would you like to do?',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+            {
+              text: 'Discard',
+              style: 'destructive',
+              onPress: () => {
+                setCurrentStep('editing');
+              },
+            },
+            {
+              text: 'Save & Continue',
+              onPress: async () => {
+                try {
+                  setIsProcessing(true);
+                  
+                  // Apply filter to photo if selected
+                  let finalUri = mediaUri;
+                  if (mediaType === 'photo' && filters.selectedFilter.id !== 'normal') {
+                    try {
+                      finalUri = await filters.applyFilterToPhoto(mediaUri);
+                    } catch (filterError) {
+                      console.warn('Filter application failed, using original:', filterError);
+                      // Continue with original if filter fails
+                    }
+                  }
+                  
+                  // Save to gallery
+                  onSaveToGallery({
+                    uri: finalUri,
+                    caption: caption.trim(),
+                    type: mediaType,
+                    segments: videoSegments,
+                  });
+                  
+                  // Go back to editing step
+                  setCurrentStep('editing');
+                } catch (error) {
+                  console.error('Error saving:', error);
+                  Alert.alert('Error', 'Failed to save media');
+                  setIsProcessing(false);
+                }
+              },
+            },
+          ],
+          { cancelable: true }
+        );
+      } else {
+        setCurrentStep('editing');
+      }
       return;
     }
     
-    // If on editing step, handle exit
-    // Different behavior for gallery videos vs new captures
-    if (isFromGallery && mediaType === 'video' && onAddSegments) {
-      // For videos from gallery, allow adding segments
+    // If on editing step, show save/discard/cancel options
+    const hasChanges = caption.trim() !== initialCaption || filters.selectedFilter.id !== 'normal';
+    console.log('Editing step, hasChanges:', hasChanges, 'caption:', caption.trim(), 'initialCaption:', initialCaption, 'filter:', filters.selectedFilter.id);
+    
+    if (hasChanges) {
+      console.log('Showing save changes alert for editing step');
       Alert.alert(
-        'What would you like to do?',
-        'You can add more video segments or return to the gallery.',
-        [
-          {
-            text: 'Back to Gallery',
-            onPress: () => {
-              onBack();
-            },
-          },
-          {
-            text: 'Add Segments',
-            onPress: () => {
-              onAddSegments();
-            },
-          },
-        ],
-        { cancelable: true }
-      );
-    } else if (isFromGallery) {
-      // For photos from gallery or when no add segments option, just go back
-      onBack();
-    } else {
-      // For new captures from camera
-      Alert.alert(
-        'Discard Changes?',
-        'Do you want to go back to the camera? Your edits will be lost.',
+        'Save Your Changes?',
+        'You have unsaved changes. What would you like to do?',
         [
           {
             text: 'Cancel',
@@ -323,9 +361,67 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
               onBack();
             },
           },
+          {
+            text: 'Save & Exit',
+            onPress: async () => {
+              try {
+                setIsProcessing(true);
+                
+                // Apply filter to photo if selected
+                let finalUri = mediaUri;
+                if (mediaType === 'photo' && filters.selectedFilter.id !== 'normal') {
+                  try {
+                    finalUri = await filters.applyFilterToPhoto(mediaUri);
+                  } catch (filterError) {
+                    console.warn('Filter application failed, using original:', filterError);
+                    // Continue with original if filter fails
+                  }
+                }
+                
+                // Save to gallery
+                onSaveToGallery({
+                  uri: finalUri,
+                  caption: caption.trim(),
+                  type: mediaType,
+                  segments: videoSegments,
+                });
+              } catch (error) {
+                console.error('Error saving:', error);
+                Alert.alert('Error', 'Failed to save media');
+                setIsProcessing(false);
+              }
+            },
+          },
         ],
         { cancelable: true }
       );
+    } else {
+      // No changes, handle based on source
+      if (isFromGallery && mediaType === 'video' && onAddSegments) {
+        // For videos from gallery, allow adding segments
+        Alert.alert(
+          'What would you like to do?',
+          'You can add more video segments or return to the gallery.',
+          [
+            {
+              text: 'Back to Gallery',
+              onPress: () => {
+                onBack();
+              },
+            },
+            {
+              text: 'Add Segments',
+              onPress: () => {
+                onAddSegments();
+              },
+            },
+          ],
+          { cancelable: true }
+        );
+      } else {
+        // No changes and not from gallery with segments, just go back
+        onBack();
+      }
     }
   };
 
@@ -344,6 +440,10 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
       {/* Back Button - Top Left */}
       <TouchableOpacity style={styles.backButtonTop} onPress={handleBackPress}>
         <MaterialIcons name="arrow-back" size={28} color="#fff" />
+        {/* Unsaved changes indicator */}
+        {(caption.trim() !== initialCaption || filters.selectedFilter.id !== 'normal') && (
+          <View style={styles.unsavedIndicator} />
+        )}
       </TouchableOpacity>
       
       {/* Step Indicator */}
@@ -477,6 +577,10 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
       {/* Back Button - Top Left */}
       <TouchableOpacity style={styles.backButtonTop} onPress={handleBackPress}>
         <MaterialIcons name="arrow-back" size={28} color="#fff" />
+        {/* Unsaved changes indicator */}
+        {(caption.trim() !== initialCaption || filters.selectedFilter.id !== 'normal') && (
+          <View style={styles.unsavedIndicator} />
+        )}
       </TouchableOpacity>
       
       {/* Step Indicator */}
@@ -621,6 +725,17 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
+  },
+  unsavedIndicator: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ff0050',
+    borderWidth: 1,
+    borderColor: '#fff',
   },
   mediaContainer: {
     flex: 1,

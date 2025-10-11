@@ -11,7 +11,7 @@ interface UseCameraRecordingReturn {
   setRecordingTime: React.Dispatch<React.SetStateAction<number>>;
   setIsPaused: React.Dispatch<React.SetStateAction<boolean>>;
   startRecording: () => Promise<void>;
-  stopRecording: () => void;
+  stopRecording: () => Promise<void>;
   resumeRecording: () => void;
   formatTime: (seconds: number) => string;
   timerRef: React.MutableRefObject<NodeJS.Timeout | null>;
@@ -63,12 +63,19 @@ export const useCameraRecording = (): UseCameraRecordingReturn => {
     }
   };
 
-  const stopRecording = () => {
+
+  const stopRecording = async () => {
     if (cameraRef.current && isRecording) {
       setIsPaused(true);
-      cameraRef.current.stopRecording();
       if (timerRef.current) {
         clearInterval(timerRef.current);
+      }
+      try {
+        await cameraRef.current.stopRecording();
+        // The video will be processed in the startRecording function's finally block
+        // We just need to wait for the recording to stop
+      } catch (error) {
+        console.error('Error stopping recording:', error);
       }
     }
   };

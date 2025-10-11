@@ -30,11 +30,16 @@ export const styles = StyleSheet.create({
     flex: 1,
   },
   topControls: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: 50,
     paddingHorizontal: 20,
+    zIndex: 10,
   },
   backButton: {
     width: 44,
@@ -87,6 +92,7 @@ export const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     gap: 8,
+    zIndex: 10,
   },
   editingText: {
     color: '#fff',
@@ -102,6 +108,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
+    zIndex: 10,
   },
   leftControl: {
     flex: 1,
@@ -167,6 +174,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 18,
+    zIndex: 10,
   },
   recordingDot: {
     width: 8,
@@ -192,6 +200,7 @@ export const styles = StyleSheet.create({
     transform: [{ translateX: -40 }, { translateY: -100 }],
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 10,
   },
   resumeButton: {
     width: 50,
