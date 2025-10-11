@@ -18,7 +18,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { MediaEditorScreen } from '../components/MediaEditorScreen';
 import { saveMediaMetadata, loadMediaMetadata } from '../utils/mediaStorage';
-import { deleteMedia as deleteMediaFromBackend, uploadMedia } from '../utils/api';
+import { deleteMedia as deleteMediaFromBackend, uploadMedia, getMediaLikes } from '../utils/api';
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = (width - 24) / 2; // 2 columns with spacing
@@ -61,6 +61,7 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
   const [mediaPermission, requestMediaPermission] = MediaLibrary.usePermissions();
   const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
   const [deleteMode, setDeleteMode] = useState<string | null>(null); // Track which item is in delete mode
+  const [likesCounts, setLikesCounts] = useState<Map<number, number>>(new Map());
   const videoRef = useRef<Video>(null);
 
   useEffect(() => {
@@ -196,11 +197,39 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
       allMedia.sort((a, b) => b.timestamp - a.timestamp);
 
       setMediaItems(allMedia);
+      
+      // Load likes data for public media
+      await loadLikesForPublicMedia(allMedia);
     } catch (error) {
       console.error('Error loading media:', error);
       Alert.alert('Error', 'Failed to load media');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadLikesForPublicMedia = async (mediaItems: MediaItem[]) => {
+    try {
+      const likesCountsMap = new Map<number, number>();
+      
+      // Load likes data for public media items only
+      await Promise.all(
+        mediaItems.map(async (item) => {
+          if (item.id && item.published) {
+            try {
+              const likes = await getMediaLikes(item.id);
+              likesCountsMap.set(item.id, likes.length);
+            } catch (error) {
+              console.error(`Error loading likes for media ${item.id}:`, error);
+              likesCountsMap.set(item.id, 0);
+            }
+          }
+        })
+      );
+      
+      setLikesCounts(likesCountsMap);
+    } catch (error) {
+      console.error('Error loading likes data:', error);
     }
   };
 
@@ -624,7 +653,7 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
                 activeOpacity={0.7}
               >
                 <MaterialIcons name="favorite-border" size={22} color="#fff" />
-                <Text style={styles.socialActionCount}>0</Text>
+                <Text style={styles.socialActionCount}>{item.id ? likesCounts.get(item.id) || 0 : 0}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
