@@ -118,8 +118,6 @@ export const useMediaSaving = ({
           console.log('Could not delete original video:', err);
         }
       }
-
-      Alert.alert('Success', `${data.type === 'photo' ? 'Photo' : 'Video'} is now public and saved to your gallery!`);
       
       if (onVideoSaved) {
         onVideoSaved(data.uri);
@@ -128,10 +126,7 @@ export const useMediaSaving = ({
       onResetState();
     } catch (error) {
       console.error('Error making public:', error);
-      Alert.alert(
-        'Upload Failed', 
-        'Failed to upload media to server. Please make sure the backend is running and try again.'
-      );
+      throw new Error('Failed to upload media to server');
     } finally {
       setIsUploading(false);
     }
@@ -158,9 +153,7 @@ export const useMediaSaving = ({
           segments: data.segments,
         });
 
-        if (success) {
-          Alert.alert('Success', 'Video saved privately to your device!');
-        } else {
+        if (!success) {
           throw new Error('Failed to save metadata');
         }
       } else {
@@ -200,8 +193,6 @@ export const useMediaSaving = ({
         if (Platform.OS !== 'web') {
           await MediaLibrary.saveToLibraryAsync(data.uri);
         }
-
-        Alert.alert('Success', `${data.type === 'photo' ? 'Photo' : 'Video'} saved privately to your device!`);
       }
       
       if (onVideoSaved) {
@@ -211,7 +202,7 @@ export const useMediaSaving = ({
       onResetState();
     } catch (error) {
       console.error('Error saving to gallery:', error);
-      Alert.alert('Error', 'Failed to save media to gallery');
+      throw new Error('Failed to save media to gallery');
     }
   };
 

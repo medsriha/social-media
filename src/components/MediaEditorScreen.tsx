@@ -291,14 +291,20 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
               style: 'cancel',
             },
             {
-              text: 'Discard',
-              style: 'destructive',
+              text: 'Return to editing',
               onPress: () => {
                 setCurrentStep('editing');
               },
             },
             {
-              text: 'Save & Continue',
+              text: 'Discard & exit',
+              style: 'destructive',
+              onPress: () => {
+                onBack();
+              },
+            },
+            {
+              text: 'Save & Exit',
               onPress: async () => {
                 try {
                   setIsProcessing(true);
@@ -315,15 +321,15 @@ export const MediaEditorScreen: React.FC<MediaEditorScreenProps> = ({
                   }
                   
                   // Save to gallery
-                  onSaveToGallery({
+                  await onSaveToGallery({
                     uri: finalUri,
                     caption: caption.trim(),
                     type: mediaType,
                     segments: videoSegments,
                   });
                   
-                  // Go back to editing step
-                  setCurrentStep('editing');
+                  // Exit to previous screen
+                  onBack();
                 } catch (error) {
                   console.error('Error saving:', error);
                   Alert.alert('Error', 'Failed to save media');
