@@ -61,6 +61,20 @@ export const styles = StyleSheet.create({
   modeButtonActive: {
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
+  recordingModeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  recordingModeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   editingIndicator: {
     position: 'absolute',
     top: 100,

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  StyleSheet,
   Text,
   View,
   TouchableOpacity,
@@ -16,7 +15,6 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { MediaEditorScreen } from '../components/MediaEditorScreen';
-import { saveMediaMetadata } from '../utils/mediaStorage';
 import { useCameraRecording } from '../hooks/useCameraRecording';
 import { useMediaSaving } from '../hooks/useMediaSaving';
 import { styles } from '../styles/MediaRecorderScreen.styles';
@@ -110,8 +108,85 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     setFacing((current) => (current === 'back' ? 'front' : 'back'));
   };
 
-  const toggleMode = () => {
-    setMode((current) => (current === 'photo' ? 'video' : 'photo'));
+
+  const handleModeSwitch = (newMode: 'photo' | 'video') => {
+    // Since mode switch is only shown when not actively recording, we only need to check for paused recordings or existing segments
+    const hasVideoContent = mode === 'video' && (
+      recording.isPaused || 
+      recording.videoSegments.length > 0
+    );
+
+    if (hasVideoContent) {
+      // Show alert for paused recording or existing segments
+      showModeSwitchAlert(newMode);
+    } else {
+      // No video content, safe to switch directly
+      setMode(newMode);
+    }
+  };
+
+  const showModeSwitchAlert = (newMode: 'photo' | 'video') => {
+    Alert.alert(
+      'Switch Mode?',
+      'You have a video recording. What would you like to do?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => {
+            // If we paused the recording, resume it
+            if (recording.isPaused && !recording.isRecording) {
+              recording.resumeRecording();
+            }
+          },
+        },
+        {
+          text: 'Save & Switch',
+          onPress: async () => {
+            try {
+              // Ensure we have video segments to save
+              if (recording.videoSegments.length > 0) {
+                const latestSegment = recording.videoSegments[recording.videoSegments.length - 1];
+                await saveMediaToGallery(latestSegment, 'video');
+                
+                // Show success message
+                Alert.alert('Success', 'Video saved to gallery!');
+              } else {
+                Alert.alert('Info', 'No video recording to save');
+              }
+              
+              // Clear recording state and switch mode
+              recording.setVideoSegments([]);
+              recording.setRecordingTime(0);
+              recording.setIsPaused(false);
+              if (recording.timerRef.current) {
+                clearInterval(recording.timerRef.current);
+              }
+              setMode(newMode);
+            } catch (error) {
+              console.error('Error saving recording before mode switch:', error);
+              const errorMessage = error instanceof Error ? error.message : 'Failed to save recording. Please try again.';
+              Alert.alert('Error', errorMessage);
+            }
+          },
+        },
+        {
+          text: 'Discard & Switch',
+          style: 'destructive',
+          onPress: () => {
+            // Clear recording state and switch mode
+            recording.setVideoSegments([]);
+            recording.setRecordingTime(0);
+            recording.setIsPaused(false);
+            if (recording.timerRef.current) {
+              clearInterval(recording.timerRef.current);
+            }
+            setMode(newMode);
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   const takePhoto = async () => {
@@ -144,15 +219,15 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
 
   const deleteRecording = () => {
     Alert.alert(
-      'Delete Recording',
-      'Are you sure you want to delete this recording? This action cannot be undone.',
+      'Retake Recording',
+      'Are you sure you want to retake this recording? Your current recording will be lost.',
       [
         {
           text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Delete',
+          text: 'Retake',
           style: 'destructive',
           onPress: () => {
             const segmentsToKeep = originalVideoUri ? [originalVideoUri] : [];
@@ -169,61 +244,6 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     );
   };
 
-  const saveVideoDirectly = async () => {
-    if (recording.videoSegments.length === 0) return;
-
-    try {
-      // Request media library permission if not granted
-      if (!mediaPermission?.granted) {
-        const { status } = await requestMediaPermission();
-        if (status !== 'granted') {
-          Alert.alert('Permission Required', 'Media library permission is needed to save videos');
-          return;
-        }
-      }
-
-      // Create a permanent directory for app videos
-      const videoDirectory = `${FileSystem.documentDirectory}videos/`;
-      const dirInfo = await FileSystem.getInfoAsync(videoDirectory);
-      
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(videoDirectory, { intermediates: true });
-      }
-
-      // Use the last segment
-      const sourceUri = recording.videoSegments[recording.videoSegments.length - 1];
-      
-      // Generate unique filename
-      const timestamp = new Date().getTime();
-      const filename = `video_${timestamp}.mp4`;
-      const newUri = `${videoDirectory}${filename}`;
-
-      // Copy the video to permanent storage
-      await FileSystem.copyAsync({
-        from: sourceUri,
-        to: newUri,
-      });
-
-      // Optionally save to device's media library
-      if (Platform.OS !== 'web') {
-        await MediaLibrary.saveToLibraryAsync(sourceUri);
-      }
-
-      Alert.alert('Success', 'Video saved successfully!');
-      
-      if (onVideoSaved) {
-        onVideoSaved(newUri);
-      }
-      
-      // Reset state
-      recording.setVideoSegments([]);
-      recording.setRecordingTime(0);
-      recording.setIsPaused(false);
-    } catch (error) {
-      console.error('Error saving video:', error);
-      Alert.alert('Error', 'Failed to save video');
-    }
-  };
 
   const saveVideo = async () => {
     if (!videoUri && recording.videoSegments.length === 0) return;
@@ -281,12 +301,6 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     }
   };
 
-  const discardVideo = () => {
-    setVideoUri(null);
-    recording.setVideoSegments([]);
-    recording.setRecordingTime(0);
-    recording.setIsPaused(false);
-  };
 
   const savePhoto = async () => {
     if (!photoUri) return;
@@ -297,94 +311,126 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     setShowEditor(true);
   };
 
-  const savePhotoToGallery = async (photoUri: string) => {
+  const saveMediaToGallery = async (mediaUri: string, mediaType: 'photo' | 'video') => {
     try {
       // Request media library permission if not granted
       if (!mediaPermission?.granted) {
         const { status } = await requestMediaPermission();
         if (status !== 'granted') {
-          throw new Error('Media library permission is needed to save photos');
+          throw new Error(`Media library permission is needed to save ${mediaType}s`);
         }
       }
 
-      // Create a permanent directory for app photos
-      const photoDirectory = `${FileSystem.documentDirectory}photos/`;
-      const dirInfo = await FileSystem.getInfoAsync(photoDirectory);
+      // Create a permanent directory for app media
+      const mediaDirectory = `${FileSystem.documentDirectory}${mediaType}s/`;
+      const dirInfo = await FileSystem.getInfoAsync(mediaDirectory);
       
       if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(photoDirectory, { intermediates: true });
+        await FileSystem.makeDirectoryAsync(mediaDirectory, { intermediates: true });
       }
 
       // Generate unique filename
       const timestamp = new Date().getTime();
-      const filename = `photo_${timestamp}.jpg`;
-      const newUri = `${photoDirectory}${filename}`;
+      const extension = mediaType === 'photo' ? 'jpg' : 'mp4';
+      const filename = `${mediaType}_${timestamp}.${extension}`;
+      const newUri = `${mediaDirectory}${filename}`;
 
-      // Copy the photo to permanent storage
+      // Copy the media to permanent storage
       await FileSystem.copyAsync({
-        from: photoUri,
+        from: mediaUri,
         to: newUri,
       });
 
       // Save to device's media library
       if (Platform.OS !== 'web') {
-        const asset = await MediaLibrary.saveToLibraryAsync(photoUri);
-        console.log('Photo saved to gallery:', asset);
+        const asset = await MediaLibrary.saveToLibraryAsync(mediaUri);
         return asset;
       }
       
       return { uri: newUri };
     } catch (error) {
-      console.error('Error saving photo:', error);
+      console.error(`Error saving ${mediaType}:`, error);
       throw error;
     }
   };
 
-  const saveVideoToGallery = async (videoUri: string) => {
-    try {
-      // Request media library permission if not granted
-      if (!mediaPermission?.granted) {
-        const { status } = await requestMediaPermission();
-        if (status !== 'granted') {
-          throw new Error('Media library permission is needed to save videos');
-        }
-      }
 
-      // Create a permanent directory for app videos
-      const videoDirectory = `${FileSystem.documentDirectory}videos/`;
-      const dirInfo = await FileSystem.getInfoAsync(videoDirectory);
-      
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(videoDirectory, { intermediates: true });
-      }
+  const discardMedia = (mediaType: 'photo' | 'video') => {
+    const capitalizedType = mediaType.charAt(0).toUpperCase() + mediaType.slice(1);
+    
+    Alert.alert(
+      `Retake ${capitalizedType}`,
+      `Are you sure you want to retake this ${mediaType}? Your current ${mediaType} will be lost.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Retake',
+          style: 'destructive',
+          onPress: () => {
+            if (mediaType === 'photo') {
+              setPhotoUri(null);
+            } else {
+              setVideoUri(null);
+              recording.setVideoSegments([]);
+              recording.setRecordingTime(0);
+              recording.setIsPaused(false);
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
 
-      // Generate unique filename
-      const timestamp = new Date().getTime();
-      const filename = `video_${timestamp}.mp4`;
-      const newUri = `${videoDirectory}${filename}`;
-
-      // Copy the video to permanent storage
-      await FileSystem.copyAsync({
-        from: videoUri,
-        to: newUri,
-      });
-
-      // Save to device's media library
-      if (Platform.OS !== 'web') {
-        const asset = await MediaLibrary.saveToLibraryAsync(videoUri);
-        console.log('Video saved to gallery:', asset);
-        return asset;
-      }
-      
-      return { uri: newUri };
-    } catch (error) {
-      console.error('Error saving video:', error);
-      throw error;
+  const saveMedia = (mediaType: 'photo' | 'video') => {
+    if (mediaType === 'photo') {
+      savePhoto();
+    } else {
+      saveVideo();
     }
   };
 
-  const discardPhoto = () => {
-    setPhotoUri(null);
+  const renderMediaPreview = (mediaType: 'photo' | 'video') => {
+    const mediaUri = mediaType === 'photo' ? photoUri : videoUri;
+    const previewStyle = mediaType === 'photo' ? styles.preview : styles.video;
+    const controlsStyle = mediaType === 'photo' ? styles.photoPreviewControls : styles.videoPreviewControls;
+    
+    if (!mediaUri) {
+      return null;
+    }
+    
+    return (
+      <View style={styles.container}>
+        <StatusBar style="light" />
+        <View style={styles.previewTopControls}>
+          <TouchableOpacity style={styles.backButton} onPress={() => handleBackFromMediaPreview(mediaType)}>
+            <MaterialIcons name="arrow-back" size={28} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        {mediaType === 'photo' ? (
+          <Image source={{ uri: mediaUri }} style={previewStyle} resizeMode="contain" />
+        ) : (
+          <Video
+            source={{ uri: mediaUri }}
+            style={previewStyle}
+            useNativeControls
+            resizeMode={ResizeMode.CONTAIN}
+            isLooping
+          />
+        )}
+        <View style={controlsStyle}>
+          <TouchableOpacity style={styles.retakeButton} onPress={() => discardMedia(mediaType)}>
+            <MaterialIcons name="refresh" size={24} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.nextButton} onPress={() => saveMedia(mediaType)}>
+            <MaterialIcons name="arrow-forward" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
   };
 
   // Editor handlers
@@ -409,16 +455,26 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     }
   };
 
-  const handleBackFromPhotoPreview = () => {
+  const handleBackFromMediaPreview = (mediaType: 'photo' | 'video') => {
+    const mediaUri = mediaType === 'photo' ? photoUri : videoUri;
+    const capitalizedType = mediaType.charAt(0).toUpperCase() + mediaType.slice(1);
+    
     Alert.alert(
-      'Save Photo?',
-      'Do you want to save this photo to your gallery before going back?',
+      `Save ${capitalizedType}?`,
+      `Do you want to save this ${mediaType} to your gallery before going back?`,
       [
         {
           text: 'Discard',
           style: 'destructive',
           onPress: () => {
-            setPhotoUri(null);
+            if (mediaType === 'photo') {
+              setPhotoUri(null);
+            } else {
+              setVideoUri(null);
+              recording.setVideoSegments([]);
+              recording.setRecordingTime(0);
+              recording.setIsPaused(false);
+            }
             if (onBack) {
               onBack();
             }
@@ -428,15 +484,20 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
           text: 'Save & Back',
           onPress: async () => {
             try {
-              if (photoUri) {
-                console.log('Saving photo to gallery:', photoUri);
-                const asset = await savePhotoToGallery(photoUri);
-                console.log('Photo saved successfully:', asset);
-                Alert.alert('Success', 'Photo saved to gallery!', [
+              if (mediaUri) {
+                const asset = await saveMediaToGallery(mediaUri, mediaType);
+                Alert.alert('Success', `${capitalizedType} saved to gallery!`, [
                   {
                     text: 'OK',
                     onPress: () => {
-                      setPhotoUri(null);
+                      if (mediaType === 'photo') {
+                        setPhotoUri(null);
+                      } else {
+                        setVideoUri(null);
+                        recording.setVideoSegments([]);
+                        recording.setRecordingTime(0);
+                        recording.setIsPaused(false);
+                      }
                       if (onBack) {
                         onBack();
                       }
@@ -444,15 +505,21 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
                   },
                 ]);
               } else {
-                console.log('No photo to save, going back');
-                setPhotoUri(null);
+                if (mediaType === 'photo') {
+                  setPhotoUri(null);
+                } else {
+                  setVideoUri(null);
+                  recording.setVideoSegments([]);
+                  recording.setRecordingTime(0);
+                  recording.setIsPaused(false);
+                }
                 if (onBack) {
                   onBack();
                 }
               }
             } catch (error) {
-              console.error('Error saving photo:', error);
-              const errorMessage = error instanceof Error ? error.message : 'Failed to save photo to gallery. Please try again.';
+              console.error(`Error saving ${mediaType}:`, error);
+              const errorMessage = error instanceof Error ? error.message : `Failed to save ${mediaType} to gallery. Please try again.`;
               Alert.alert('Error', errorMessage);
             }
           },
@@ -466,19 +533,21 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
     );
   };
 
-  const handleBackFromVideoPreview = () => {
+  const handleBackFromVideoRecording = () => {
     Alert.alert(
-      'Save Video?',
-      'Do you want to save this video to your gallery before going back?',
+      'Save Recording?',
+      'Do you want to save your current recording before going back?',
       [
         {
           text: 'Discard',
           style: 'destructive',
           onPress: () => {
-            setVideoUri(null);
             recording.setVideoSegments([]);
             recording.setRecordingTime(0);
             recording.setIsPaused(false);
+            if (recording.timerRef.current) {
+              clearInterval(recording.timerRef.current);
+            }
             if (onBack) {
               onBack();
             }
@@ -488,18 +557,20 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
           text: 'Save & Back',
           onPress: async () => {
             try {
-              if (videoUri) {
-                console.log('Saving video to gallery:', videoUri);
-                const asset = await saveVideoToGallery(videoUri);
-                console.log('Video saved successfully:', asset);
-                Alert.alert('Success', 'Video saved to gallery!', [
+              if (recording.videoSegments.length > 0) {
+                // Finish the recording first
+                const latestSegment = recording.videoSegments[recording.videoSegments.length - 1];
+                const asset = await saveMediaToGallery(latestSegment, 'video');
+                Alert.alert('Success', 'Recording saved to gallery!', [
                   {
                     text: 'OK',
                     onPress: () => {
-                      setVideoUri(null);
                       recording.setVideoSegments([]);
                       recording.setRecordingTime(0);
                       recording.setIsPaused(false);
+                      if (recording.timerRef.current) {
+                        clearInterval(recording.timerRef.current);
+                      }
                       if (onBack) {
                         onBack();
                       }
@@ -507,18 +578,19 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
                   },
                 ]);
               } else {
-                console.log('No video to save, going back');
-                setVideoUri(null);
                 recording.setVideoSegments([]);
                 recording.setRecordingTime(0);
                 recording.setIsPaused(false);
+                if (recording.timerRef.current) {
+                  clearInterval(recording.timerRef.current);
+                }
                 if (onBack) {
                   onBack();
                 }
               }
             } catch (error) {
-              console.error('Error saving video:', error);
-              const errorMessage = error instanceof Error ? error.message : 'Failed to save video to gallery. Please try again.';
+              console.error('Error saving recording:', error);
+              const errorMessage = error instanceof Error ? error.message : 'Failed to save recording to gallery. Please try again.';
               Alert.alert('Error', errorMessage);
             }
           },
@@ -560,163 +632,139 @@ export const MediaRecorderScreen: React.FC<MediaRecorderScreenProps> = ({
   }
 
   if (photoUri) {
-    return (
-      <View style={styles.container}>
-        <StatusBar style="light" />
-        <View style={styles.previewTopControls}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBackFromPhotoPreview}>
-            <MaterialIcons name="arrow-back" size={28} color="#fff" />
-          </TouchableOpacity>
-        </View>
-        <Image source={{ uri: photoUri }} style={styles.preview} resizeMode="contain" />
-        <View style={styles.photoPreviewControls}>
-          <TouchableOpacity style={styles.retakeButton} onPress={discardPhoto}>
-            <MaterialIcons name="refresh" size={24} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.nextButton} onPress={savePhoto}>
-            <MaterialIcons name="arrow-forward" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
+    return renderMediaPreview('photo');
   }
 
   if (videoUri) {
-    return (
-      <View style={styles.container}>
-        <StatusBar style="light" />
-        <View style={styles.previewTopControls}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBackFromVideoPreview}>
-            <MaterialIcons name="arrow-back" size={28} color="#fff" />
-          </TouchableOpacity>
-        </View>
-        <Video
-          source={{ uri: videoUri }}
-          style={styles.video}
-          useNativeControls
-          resizeMode={ResizeMode.CONTAIN}
-          isLooping
-        />
-        <View style={styles.videoPreviewControls}>
-          <TouchableOpacity style={styles.retakeButton} onPress={discardVideo}>
-            <MaterialIcons name="refresh" size={24} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.nextButton} onPress={saveVideo}>
-            <MaterialIcons name="arrow-forward" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
+    return renderMediaPreview('video');
   }
 
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
-      <CameraView style={styles.camera} facing={facing} ref={recording.cameraRef} mode={mode === 'photo' ? 'picture' : 'video'}>
+      <CameraView style={styles.camera} facing={facing} ref={recording.cameraRef} mode={mode === 'photo' ? 'picture' : 'video'} />
 
-        <View style={styles.topControls}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <MaterialIcons name="arrow-back" size={28} color="#fff" />
-          </TouchableOpacity>
+      {/* Top Controls - Positioned absolutely over camera */}
+      <View style={styles.topControls}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={
+            mode === 'video' && (recording.isRecording || recording.isPaused || recording.videoSegments.length > 0)
+              ? handleBackFromVideoRecording
+              : handleBack
+          }
+        >
+          <MaterialIcons name="arrow-back" size={28} color="#fff" />
+        </TouchableOpacity>
+        {/* Show mode toggle when not actively recording, or recording indicator when recording */}
+        {!recording.isRecording ? (
           <View style={styles.modeToggle}>
             <TouchableOpacity
               style={[styles.modeButton, mode === 'video' && styles.modeButtonActive]}
-              onPress={() => setMode('video')}
+              onPress={() => handleModeSwitch('video')}
             >
               <MaterialIcons name="videocam" size={20} color={mode === 'video' ? '#fff' : '#999'} />
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modeButton, mode === 'photo' && styles.modeButtonActive]}
-              onPress={() => setMode('photo')}
+              onPress={() => handleModeSwitch('photo')}
             >
               <MaterialIcons name="camera-alt" size={20} color={mode === 'photo' ? '#fff' : '#999'} />
             </TouchableOpacity>
           </View>
-        </View>
-
-        {/* Editing indicator */}
-        {originalVideoUri && recording.videoSegments.length > 0 && (
-          <View style={styles.editingIndicator}>
-            <MaterialIcons name="edit" size={16} color="#fff" />
-            <Text style={styles.editingText}>Adding segments to existing video</Text>
+        ) : (
+          <View style={styles.recordingModeIndicator}>
+            <View style={styles.recordingDot} />
+            <Text style={styles.recordingModeText}>Recording</Text>
           </View>
         )}
+      </View>
+
+      {/* Editing indicator */}
+      {originalVideoUri && recording.videoSegments.length > 0 && (
+        <View style={styles.editingIndicator}>
+          <MaterialIcons name="edit" size={16} color="#fff" />
+          <Text style={styles.editingText}>Adding segments to existing video</Text>
+        </View>
+      )}
+      
+      {/* Bottom Controls - Positioned absolutely over camera */}
+      <View style={styles.bottomControls}>
+        <View style={styles.leftControl}>
+          {!recording.isRecording && !recording.isPaused && (
+            <TouchableOpacity style={styles.flipButton} onPress={toggleCameraFacing}>
+              <MaterialIcons name="flip-camera-ios" size={32} color="#fff" />
+            </TouchableOpacity>
+          )}
+        </View>
         
-        <View style={styles.bottomControls}>
-          <View style={styles.leftControl}>
-            {!recording.isRecording && !recording.isPaused && (
-              <TouchableOpacity style={styles.flipButton} onPress={toggleCameraFacing}>
-                <MaterialIcons name="flip-camera-ios" size={32} color="#fff" />
-              </TouchableOpacity>
-            )}
-          </View>
-          
-          <View style={styles.centerControl}>
-            {mode === 'video' ? (
-              recording.isPaused ? (
-                <>
-                  <TouchableOpacity
-                    style={styles.doneButton}
-                    onPress={finishRecording}
-                  >
-                    <MaterialIcons name="check" size={24} color="#fff" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.resumeButton}
-                    onPress={recording.resumeRecording}
-                  >
-                    <MaterialIcons name="fiber-manual-record" size={24} color="#fff" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={deleteRecording}
-                  >
-                    <MaterialIcons name="delete" size={24} color="#fff" />
-                  </TouchableOpacity>
-                </>
-              ) : (
+        <View style={styles.centerControl}>
+          {mode === 'video' ? (
+            recording.isPaused ? (
+              <>
                 <TouchableOpacity
-                  style={[styles.recordButton, recording.isRecording && styles.recordingButton]}
-                  onPress={recording.isRecording ? recording.stopRecording : recording.startRecording}
+                  style={styles.doneButton}
+                  onPress={finishRecording}
                 >
-                  {recording.isRecording ? (
-                    <View style={styles.stopIcon} />
-                  ) : (
-                    <View style={styles.recordIcon} />
-                  )}
+                  <MaterialIcons name="check" size={24} color="#fff" />
                 </TouchableOpacity>
-              )
+                <TouchableOpacity
+                  style={styles.resumeButton}
+                  onPress={recording.resumeRecording}
+                >
+                  <MaterialIcons name="fiber-manual-record" size={24} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.retakeButton}
+                  onPress={deleteRecording}
+                >
+                  <MaterialIcons name="refresh" size={24} color="#fff" />
+                </TouchableOpacity>
+              </>
             ) : (
               <TouchableOpacity
-                style={styles.captureButton}
-                onPress={takePhoto}
+                style={[styles.recordButton, recording.isRecording && styles.recordingButton]}
+                onPress={recording.isRecording ? recording.stopRecording : recording.startRecording}
               >
-                <View style={styles.captureButtonInner} />
+                {recording.isRecording ? (
+                  <View style={styles.stopIcon} />
+                ) : (
+                  <View style={styles.recordIcon} />
+                )}
               </TouchableOpacity>
-            )}
-          </View>
-          
-          <View style={styles.rightControl} />
+            )
+          ) : (
+            <TouchableOpacity
+              style={styles.captureButton}
+              onPress={takePhoto}
+            >
+              <View style={styles.captureButtonInner} />
+            </TouchableOpacity>
+          )}
         </View>
         
-        {(recording.isRecording || recording.isPaused) && (
-          <View style={styles.recordingIndicator}>
-            {recording.isRecording && <View style={styles.recordingDot} />}
-            <Text style={styles.recordingText}>
-              {recording.formatTime(recording.recordingTime)}
-            </Text>
-            {recording.isPaused && recording.videoSegments.length > 0 && (
-              <Text style={styles.segmentText}>• {recording.videoSegments.length} segment{recording.videoSegments.length > 1 ? 's' : ''}</Text>
-            )}
-          </View>
-        )}
-        
-        {recording.isPaused && (
-          <View style={styles.pauseOverlay}>
-            <MaterialIcons name="pause" size={80} color="rgba(255,255,255,0.9)" />
-          </View>
-        )}
-      </CameraView>
+        <View style={styles.rightControl} />
+      </View>
+      
+      {/* Recording indicator - Positioned absolutely over camera */}
+      {(recording.isRecording || recording.isPaused) && (
+        <View style={styles.recordingIndicator}>
+          {recording.isRecording && <View style={styles.recordingDot} />}
+          <Text style={styles.recordingText}>
+            {recording.formatTime(recording.recordingTime)}
+          </Text>
+          {recording.isPaused && recording.videoSegments.length > 0 && (
+            <Text style={styles.segmentText}>• {recording.videoSegments.length} segment{recording.videoSegments.length > 1 ? 's' : ''}</Text>
+          )}
+        </View>
+      )}
+      
+      {/* Pause overlay - Positioned absolutely over camera */}
+      {recording.isPaused && (
+        <View style={styles.pauseOverlay}>
+          <MaterialIcons name="pause" size={80} color="rgba(255,255,255,0.9)" />
+        </View>
+      )}
     </View>
   );
 };
