@@ -18,7 +18,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { MediaEditorScreen } from '../components/MediaEditorScreen';
 import { saveMediaMetadata, loadMediaMetadata } from '../utils/mediaStorage';
-import { deleteMedia as deleteMediaFromBackend, uploadMedia, getMediaLikes } from '../utils/api';
+import { deleteMedia as deleteMediaFromBackend, uploadMedia, getMediaLikes, getMediaComments } from '../utils/api';
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = (width - 24) / 2; // 2 columns with spacing
@@ -62,6 +62,7 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
   const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
   const [deleteMode, setDeleteMode] = useState<string | null>(null); // Track which item is in delete mode
   const [likesCounts, setLikesCounts] = useState<Map<number, number>>(new Map());
+  const [commentCounts, setCommentCounts] = useState<Map<number, number>>(new Map());
   const videoRef = useRef<Video>(null);
 
   useEffect(() => {
@@ -198,8 +199,8 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
 
       setMediaItems(allMedia);
       
-      // Load likes data for public media
-      await loadLikesForPublicMedia(allMedia);
+      // Load likes and comment data for public media
+      await loadLikesAndCommentsForPublicMedia(allMedia);
     } catch (error) {
       console.error('Error loading media:', error);
       Alert.alert('Error', 'Failed to load media');
@@ -208,28 +209,37 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
     }
   };
 
-  const loadLikesForPublicMedia = async (mediaItems: MediaItem[]) => {
+  const loadLikesAndCommentsForPublicMedia = async (mediaItems: MediaItem[]) => {
     try {
       const likesCountsMap = new Map<number, number>();
+      const commentCountsMap = new Map<number, number>();
       
-      // Load likes data for public media items only
+      // Load likes and comment data for public media items only
       await Promise.all(
         mediaItems.map(async (item) => {
           if (item.id && item.published) {
             try {
+              // Load likes
               const likes = await getMediaLikes(item.id);
               likesCountsMap.set(item.id, likes.length);
+              
+              // Load comments
+              const comments = await getMediaComments(item.id, 0, 1000); // Get all to count
+              const totalCommentCount = comments.length; // Only count top-level comments, not replies
+              commentCountsMap.set(item.id, totalCommentCount);
             } catch (error) {
-              console.error(`Error loading likes for media ${item.id}:`, error);
+              console.error(`Error loading data for media ${item.id}:`, error);
               likesCountsMap.set(item.id, 0);
+              commentCountsMap.set(item.id, 0);
             }
           }
         })
       );
       
       setLikesCounts(likesCountsMap);
+      setCommentCounts(commentCountsMap);
     } catch (error) {
-      console.error('Error loading likes data:', error);
+      console.error('Error loading likes and comments data:', error);
     }
   };
 
@@ -653,7 +663,9 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
                 activeOpacity={0.7}
               >
                 <MaterialIcons name="favorite-border" size={22} color="#fff" />
-                <Text style={styles.socialActionCount}>{item.id ? likesCounts.get(item.id) || 0 : 0}</Text>
+                <Text style={styles.socialActionCount}>
+                  {item.id ? (likesCounts.get(item.id) || 0) > 0 ? (likesCounts.get(item.id) || 0) : '—' : '—'}
+                </Text>
               </TouchableOpacity>
               
               <TouchableOpacity
@@ -661,7 +673,9 @@ export const MediaGalleryScreen: React.FC<MediaGalleryScreenProps> = ({
                 activeOpacity={0.7}
               >
                 <MaterialIcons name="chat-bubble-outline" size={22} color="#fff" />
-                <Text style={styles.socialActionCount}>0</Text>
+                <Text style={styles.socialActionCount}>
+                  {item.id ? (commentCounts.get(item.id) || 0) > 0 ? (commentCounts.get(item.id) || 0) : '—' : '—'}
+                </Text>
               </TouchableOpacity>
               
               <TouchableOpacity
