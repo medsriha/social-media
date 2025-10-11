@@ -269,18 +269,24 @@ export const FeedScreen: React.FC<FeedScreenProps> = ({
         });
       } else {
         // Like the media
-        await likeMedia(itemId, { user_name: 'Anonymous' });
+        const response = await likeMedia(itemId, { user_name: 'Anonymous' });
         setUserLikes(prev => {
           const newSet = new Set(prev);
           newSet.add(itemId);
           return newSet;
         });
-        setLikesCounts(prev => {
-          const newMap = new Map(prev);
-          const currentCount = newMap.get(itemId) || 0;
-          newMap.set(itemId, currentCount + 1);
-          return newMap;
-        });
+        
+        // Only increment counter if this is a first-time like (not a multiple like)
+        if (response.message === "Media liked successfully") {
+          setLikesCounts(prev => {
+            const newMap = new Map(prev);
+            const currentCount = newMap.get(itemId) || 0;
+            newMap.set(itemId, currentCount + 1);
+            return newMap;
+          });
+        }
+        // For multiple likes, don't increment the visible counter
+        
         // Trigger haptic feedback for like
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
